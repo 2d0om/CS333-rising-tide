@@ -80,6 +80,7 @@ export function createViewB(container, data, theme, { width, height }) {
     const land = S => both.filter(c => isLand(S.get(c)));
     const popAll = d3.sum(both, pop);
     return {
+      set: both,
       n: both.length,
       land1: both.length ? land(S1).length / both.length : NaN,
       land2: both.length ? land(S2).length / both.length : NaN,
@@ -92,7 +93,7 @@ export function createViewB(container, data, theme, { width, height }) {
     return charted.length ? charted.filter(isLand).length / charted.length : NaN;
   };
 
-  // Frame the map on the communities that ever have enough apartment sales.
+  // Frame the map on the communities that can be compared over time (charted in the first and last period).
   const base = { mode: 'all', homeType: 'apartment', money: 'nominal', dropExtremes: false };
   const chartedIn = p => new Set([...pricesBy(p, base)].filter(([, a]) => a.length >= R.MIN_SALES).map(([c]) => c));
   const first = chartedIn(PERIOD_KEYS[0]), last = chartedIn(PERIOD_KEYS[PERIOD_KEYS.length - 1]);
@@ -106,8 +107,8 @@ export function createViewB(container, data, theme, { width, height }) {
   const stations = data.metro.features.map(f => ({ name: f.properties.STATION_NAME, coords: f.geometry.coordinates }));
 
   // ---------- layout ----------
-  const toolbarH = 44, stripH = 150, gap = 10;
-  const mapH = Math.max(320, height - toolbarH - stripH - gap * 2);
+  const toolbarH = 44, keyH = 38, stripH = 150, gap = 10;
+  const mapH = Math.max(320, height - toolbarH - keyH - stripH - gap * 3);
 
   const toolbar = root.append('div')
     .style('display', 'flex').style('align-items', 'center').style('justify-content', 'space-between')
@@ -165,26 +166,21 @@ export function createViewB(container, data, theme, { width, height }) {
     .attr('cx', d => projection(d.coords)[0]).attr('cy', d => projection(d.coords)[1])
     .attr('r', 2.4).attr('fill', theme.ink).attr('fill-opacity', 0.75).attr('stroke', '#ffffff').attr('stroke-width', 0.8);
 
-  // Legend (bottom-left of the map)
-  const legendItems = [['dry'], ['wet'], ['shallow'], ['deep'], ['fog', 'Fog: under 20 sales, too few to trust'],
-    ['none', 'No apartment sales in this period']];
-  const legend = svg.append('g').attr('transform', `translate(16, ${mapH - 16 - legendItems.length * 17 - 44})`);
-  legend.append('rect').attr('x', -8).attr('y', -10).attr('width', 268).attr('height', legendItems.length * 17 + 52)
-    .attr('rx', 8).attr('fill', '#ffffff').attr('fill-opacity', 0.92);
-  legendItems.forEach(([cls, label], i) => {
-    const row = legend.append('g').attr('transform', `translate(0, ${i * 17})`);
-    row.append('rect').attr('width', 12).attr('height', 12).attr('y', -1).attr('rx', 2)
-      .attr('fill', fillOf(cls)).attr('stroke', theme.grid);
-    row.append('text').attr('x', 18).attr('y', 9).attr('fill', theme.ink)
-      .style('font-size', `${theme.size.small}px`).text(label || DEPTH_TEXT[cls]);
-  });
-  const ly = legendItems.length * 17;
-  legend.append('line').attr('x1', 0).attr('x2', 12).attr('y1', ly + 5).attr('y2', ly + 5)
-    .attr('stroke', theme.coastline).attr('stroke-width', 2.2);
-  legend.append('text').attr('x', 18).attr('y', ly + 9).style('font-size', `${theme.size.small}px`).attr('fill', theme.ink)
-    .text('Coastline: the typical home costs your budget');
-  legend.append('text').attr('x', 0).attr('y', ly + 28).style('font-size', `${theme.size.small}px`)
-    .style('font-style', 'italic').attr('fill', theme.quiet).text('Water = price out of reach, not flooding.');
+  // Key: a row above the map, so it never covers a community
+  const swatch = bg => `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;` +
+    `border:1px solid ${theme.grid};background:${bg};vertical-align:-2px;margin-right:4px"></span>`;
+  const fogBg = `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`;
+  const keyItems = [
+    `<span style="color:${theme.quiet}">Homes within your budget:</span>`,
+    `${swatch(theme.depth.dry)}90%+ (dry sand)`, `${swatch(theme.depth.wet)}50–90% (wet sand)`,
+    `${swatch(theme.depth.shallow)}10–50% (shallow)`, `${swatch(theme.depth.deep)}under 10% (deep)`,
+    `${swatch(fogBg)}fog: under 20 sales`, `${swatch(noSales)}no apartment sales`,
+    `<span style="display:inline-block;width:14px;border-top:2.2px solid ${theme.coastline};vertical-align:3px;margin-right:4px"></span>coastline: typical home = your budget`,
+    `<em style="color:${theme.quiet}">Water = price out of reach, not flooding.</em>`
+  ];
+  root.insert('div', 'svg').style('display', 'flex').style('flex-wrap', 'wrap').style('gap', '4px 14px')
+    .style('margin-top', `${gap}px`).style('font-size', `${theme.size.small}px`).style('min-height', `${keyH}px`)
+    .html(keyItems.map(t => `<span>${t}</span>`).join(''));
 
   // Tooltip
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
@@ -242,11 +238,20 @@ export function createViewB(container, data, theme, { width, height }) {
     commPaths.transition().duration(500).attr('fill', f => fillOf(classOf(S.get(String(f.properties.COMM_NUM)))));
     coastPath.transition().duration(500).attr('d', path(coastFor(S)));
 
+    // One measure everywhere: the share of the comparable communities (20+ sales in both
+    // the "then" and the current period) that are land. Readout, film strip and tide marks agree.
+    const Sthen = statsFor(s.thenPeriod, s);
+    const c = comparable(Sthen, S);
+    const shareIn = Sp => {
+      const charted = c.set.filter(x => (Sp.get(x)?.n || 0) >= R.MIN_SALES);
+      return charted.length ? charted.filter(x => isLand(Sp.get(x))).length / charted.length : NaN;
+    };
+
     // Tide marks: coastlines of earlier periods
     const earlier = PERIOD_KEYS.slice(0, PERIOD_KEYS.indexOf(s.period));
     const tides = earlier.map(p => {
       const Sp = statsFor(p, s);
-      return { p, d: path(coastFor(Sp)), share: chartedShare(Sp) };
+      return { p, d: path(coastFor(Sp)), share: shareIn(Sp) };
     });
     const tg = gTide.selectAll('g').data(tides, t => t.p).join(enter => {
       const g = enter.append('g').style('cursor', 'pointer');
@@ -258,13 +263,11 @@ export function createViewB(container, data, theme, { width, height }) {
     tg.select('.tide-line').attr('d', t => t.d);
     tg.select('.tide-hit').attr('d', t => t.d)
       .on('mousemove', (event, t) => showTip(event,
-        `<strong>${periodLabel(t.p)} coastline</strong><br>${pctFmt(t.share)} of charted communities were land.<br>` +
+        `<strong>${periodLabel(t.p)} coastline</strong><br>${pctFmt(t.share)} of the comparable communities were land.<br>` +
         `<span style="color:${theme.quiet}">Click to compare against ${periodLabel(t.p)}.</span>`))
       .on('mouseleave', hideTip)
       .on('click', (event, t) => ev.emit('thenPeriod', t.p));
 
-    const Sthen = statsFor(s.thenPeriod, s);
-    const c = comparable(Sthen, S);
     readout.html(s.thenPeriod === s.period
       ? `${MODE_LABEL[s.mode]} · ${periodLabel(s.period)} · ${pctFmt(chartedShare(S))} of charted communities are land`
       : `${MODE_LABEL[s.mode]} · comparable communities on land: <strong>${pctFmt(c.land1)}</strong> (${periodLabel(s.thenPeriod)}) → ` +
@@ -272,7 +275,7 @@ export function createViewB(container, data, theme, { width, height }) {
 
     strip.update(PERIOD_KEYS.map(p => {
       const Sp = statsFor(p, s);
-      return { p, S: Sp, coast: coastFor(Sp), share: chartedShare(Sp) };
+      return { p, S: Sp, coast: coastFor(Sp), share: shareIn(Sp) };
     }), s.period);
   }
 
