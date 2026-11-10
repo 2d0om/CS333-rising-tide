@@ -73,6 +73,46 @@ export function createWaterField(features, projection, width, height, { cell = 4
     return out;
   }
 
+  // For the water shader: one RGBA texel per grid cell, from the field() just computed.
+  // R = value (0..1), G = signed distance to the coastline in px (water positive; -32..96 px),
+  // B = 255 inside the data, 0 outside. The distance lets waves and foam run toward the shore.
+  const dist = new Float32Array(N), packedTex = new Uint8Array(N * 4);
+  const D0 = 32, DSPAN = 128;
+  function pack(grid) {
+    const wet = i => grid[i] >= 0.5;
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const i = y * gw + x, w = wet(i);
+      const edge = (x > 0 && wet(i - 1) !== w) || (x < gw - 1 && wet(i + 1) !== w) ||
+                   (y > 0 && wet(i - gw) !== w) || (y < gh - 1 && wet(i + gw) !== w);
+      dist[i] = edge ? 0.5 : 1e6;
+    }
+    const D = 1.4142;   // two-pass chamfer distance, in cells
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const i = y * gw + x; let d = dist[i];
+      if (x > 0) d = Math.min(d, dist[i - 1] + 1);
+      if (y > 0) { d = Math.min(d, dist[i - gw] + 1);
+        if (x > 0) d = Math.min(d, dist[i - gw - 1] + D);
+        if (x < gw - 1) d = Math.min(d, dist[i - gw + 1] + D); }
+      dist[i] = d;
+    }
+    for (let y = gh - 1; y >= 0; y--) for (let x = gw - 1; x >= 0; x--) {
+      const i = y * gw + x; let d = dist[i];
+      if (x < gw - 1) d = Math.min(d, dist[i + 1] + 1);
+      if (y < gh - 1) { d = Math.min(d, dist[i + gw] + 1);
+        if (x < gw - 1) d = Math.min(d, dist[i + gw + 1] + D);
+        if (x > 0) d = Math.min(d, dist[i + gw - 1] + D); }
+      dist[i] = d;
+    }
+    for (let i = 0, o = 0; i < N; i++, o += 4) {
+      const v = grid[i], sd = (wet(i) ? 1 : -1) * dist[i] * cell;
+      packedTex[o] = (v <= 0 ? 0 : v >= 1 ? 1 : v) * 255 + 0.5;
+      packedTex[o + 1] = Math.max(0, Math.min(1, (sd + D0) / DSPAN)) * 255 + 0.5;
+      packedTex[o + 2] = ws[i] > 1e-3 ? 255 : 0;
+      packedTex[o + 3] = 255;
+    }
+    return packedTex;
+  }
+
   // A canvas holding the surface at grid resolution; the browser's smooth upscaling turns it
   // into a continuous gradient. lut = Uint8ClampedArray of 256 rgb triples (value 0..1 -> colour).
   function makeCanvas() {
@@ -94,6 +134,8 @@ export function createWaterField(features, projection, width, height, { cell = 4
 
   return {
     field,
+    pack,
+    gw, gh, distRange: [D0, DSPAN],
     makeCanvas,
     box: { x: -m * cell, y: -m * cell, width: gw * cell, height: gh * cell },   // where the canvas sits
     // nested regions value >= t, as SVG path strings in screen coordinates

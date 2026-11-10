@@ -6,6 +6,9 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createFilmstrip } from './filmstrip.js';
 import { createWaterField } from './waterfield.js';
+import { createSeaRenderer } from './seashader.js';
+
+export const BUILD = 'View B · water shader + sea-level gauge · 2026-11-10';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -20,7 +23,7 @@ const DEPTH_TEXT = {
   shallow: 'Shallow water: 10–50% within budget',
   deep: 'Deep water: under 10% within budget'
 };
-const BUDGET_MIN = 300000, BUDGET_MAX = 6000000;   // slider range, log scale
+const BUDGET_MIN = 300000, BUDGET_MAX = 6000000;   // sea-level gauge range, log scale
 
 // GeoJSON from the course may wind rings the "wrong" way for d3 (which then fills the whole globe).
 function rewound(f) {
@@ -120,7 +123,7 @@ export function createViewB(container, data, theme, { width, height }) {
   // Colour lookup for the surface canvas: 256 steps from 0% to 100% out of reach
   const lut = new Uint8ClampedArray(256 * 3);
   for (let j = 0; j < 256; j++) { const c = d3.rgb(depthColor(j / 255)); lut.set([c.r, c.g, c.b], j * 3); }
-  const COAST = 0.5, LINES = [COAST, 0.7, 0.85];                  // coastline, then two depth lines
+  const COAST = 0.5;                                              // the coastline: half the homes in reach
   const valueOf = st => charted(st) ? outOf(st) : NaN;            // NaN: no water surface here
   const baseFill = st => !st ? noSales : !charted(st) ? 'url(#vb-fog)' : 'none';
   const look = { lut, COAST, valueOf, baseFill };                 // shared with the film strip
@@ -144,12 +147,10 @@ export function createViewB(container, data, theme, { width, height }) {
     .style('font', `600 ${theme.size.small}px ${theme.font}`).style('padding', '6px 12px')
     .style('border-radius', '8px').style('cursor', 'pointer');
 
-  // Budget slider (log scale): drag it and watch the sea retreat or take over
-  const toSlider = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([0, 1000]).clamp(true);
+  // Budget readout; the control itself is the sea-level gauge on the map
   budgetBox.append('span').style('font-weight', 600).text('Your budget');
-  const slider = budgetBox.append('input').attr('type', 'range').attr('min', 0).attr('max', 1000).attr('step', 1)
-    .attr('aria-label', 'Your budget in AED').style('flex', '1').style('accent-color', theme.depth.deep);
-  const budgetText = budgetBox.append('span').style('min-width', '230px').style('color', theme.quiet);
+  const budgetText = budgetBox.append('span').style('color', theme.quiet);
+  budgetBox.append('span').style('color', theme.quiet).text('· drag the sea level on the map to change it');
 
   // Key: a continuous scale with the named zones as ticks, above the map so it never covers it
   const fogBg = `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`;
@@ -192,24 +193,7 @@ export function createViewB(container, data, theme, { width, height }) {
   hatch.append('rect').attr('width', 6).attr('height', 6).attr('fill', '#ffffff');
   hatch.append('line').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6)
     .attr('stroke', theme.fog).attr('stroke-width', 2.2);
-  // Water texture: short broken glints rather than stripes, in two layers that drift at different
-  // speeds and directions, so the surface reads as moving water. Still when reduced motion is on.
-  const glints = (id, w, h, strokes, width, dur, dx) => {
-    const pat = defs.append('pattern').attr('id', id).attr('patternUnits', 'userSpaceOnUse')
-      .attr('width', w).attr('height', h);
-    strokes.forEach(([x, y, len, op]) => pat.append('path')
-      .attr('d', `M${x} ${y} q ${len / 2} ${-len / 6} ${len} 0`).attr('fill', 'none').attr('stroke', '#ffffff')
-      .attr('stroke-width', width).attr('stroke-linecap', 'round').attr('stroke-opacity', op));
-    if (!reduceMotion) pat.append('animateTransform').attr('attributeName', 'patternTransform')
-      .attr('type', 'translate').attr('from', '0 0').attr('to', `${dx} 0`).attr('dur', dur).attr('repeatCount', 'indefinite');
-  };
-  glints('vb-ripple', 140, 70, [[6, 12, 18, .55], [52, 8, 12, .4], [96, 20, 22, .5], [24, 38, 14, .45],
-    [74, 44, 20, .55], [118, 56, 12, .4], [40, 62, 16, .35], [108, 33, 9, .35]], 0.9, '11s', 140);
-  glints('vb-swell', 230, 110, [[10, 24, 60, .3], [120, 52, 70, .26], [40, 88, 54, .22], [170, 98, 44, .2]],
-    1.2, '24s', -230);
   const chartedClip = defs.append('clipPath').attr('id', 'vb-charted');
-  const waterClip = defs.append('clipPath').attr('id', 'vb-water').append('path');
-  const deepClip = defs.append('clipPath').attr('id', 'vb-deep').append('path');
 
   svg.append('rect').attr('width', width).attr('height', mapH).attr('fill', theme.realSea);
   // Open sea sits in the bottom-left corner of this frame, clear of every community
@@ -222,31 +206,73 @@ export function createViewB(container, data, theme, { width, height }) {
   // spills where there is no data (and the browser clips once, not once per layer).
   const gComm = svg.append('g');
   const gSea = svg.append('g').attr('clip-path', 'url(#vb-charted)').attr('pointer-events', 'none');
-  const surface = wf.makeCanvas();
+  // The water: a GPU shader when the browser has WebGL, otherwise a plain smooth gradient
+  const sea = createSeaRenderer({ box: wf.box, gw: wf.gw, gh: wf.gh, distRange: wf.distRange, lut });
+  const flat = sea ? null : wf.makeCanvas();
   gSea.append('foreignObject').attr('x', wf.box.x).attr('y', wf.box.y)
-    .attr('width', wf.box.width).attr('height', wf.box.height).node().appendChild(surface.canvas);
-  const depthLines = gSea.append('g').attr('fill', 'none').attr('stroke', '#ffffff')
-    .attr('stroke-width', 0.8).attr('stroke-opacity', 0.3);
-  gSea.append('rect').attr('width', width).attr('height', mapH).attr('fill', 'url(#vb-ripple)')
-    .attr('clip-path', 'url(#vb-water)');
-  gSea.append('rect').attr('width', width).attr('height', mapH).attr('fill', 'url(#vb-swell)')
-    .attr('clip-path', 'url(#vb-deep)');
+    .attr('width', wf.box.width).attr('height', wf.box.height).node().appendChild(sea ? sea.canvas : flat.canvas);
   gSea.append('path').attr('d', path(borders)).attr('fill', 'none').attr('stroke', '#ffffff')
-    .attr('stroke-width', 0.6).attr('stroke-opacity', 0.45);
+    .attr('stroke-width', 0.6).attr('stroke-opacity', 0.35);
   const gTide = gSea.append('g').attr('pointer-events', 'stroke');
-  // The shore: a soft band of surf with foam that laps along the coastline, then the coastline itself
-  const foamPath = gSea.append('path').attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 7)
-    .attr('stroke-opacity', 0.3).attr('stroke-linejoin', 'round');
-  const surfPath = gSea.append('path').attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1.4)
-    .attr('stroke-opacity', 0.85).attr('stroke-dasharray', '2 10').attr('stroke-linecap', 'round');
-  if (!reduceMotion) surfPath.append('animate').attr('attributeName', 'stroke-dashoffset')
-    .attr('values', '0;-12;-24').attr('dur', '3s').attr('repeatCount', 'indefinite');
   const coastPath = gSea.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
-    .attr('stroke-width', 2).attr('stroke-linejoin', 'round');
+    .attr('stroke-width', 1.6).attr('stroke-opacity', 0.9).attr('stroke-linejoin', 'round');
   const previewPath = gSea.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
     .attr('stroke-width', 2.2).attr('stroke-dasharray', '6 4').attr('opacity', 0);
   const gStations = svg.append('g').attr('pointer-events', 'none');
   const gMarks = svg.append('g').attr('pointer-events', 'none');
+
+  // ---------- the sea-level gauge ----------
+  // A tide gauge on the map's right edge. Its water level is your budget read upside down:
+  // drag the water up and the sea rises over the city (less money); drag it down and it falls.
+  const gT = 58, gB = mapH - 64, gW = 20, gX = width - 44;
+  const gy = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([gT + 6, gB - 6]).clamp(true);
+  const gauge = svg.append('g').attr('tabindex', 0).attr('role', 'slider')
+    .attr('aria-label', 'Sea level. Up: a smaller budget, the sea rises. Down: a bigger budget, it falls.')
+    .attr('aria-valuemin', BUDGET_MIN).attr('aria-valuemax', BUDGET_MAX)
+    .style('cursor', 'ns-resize').style('outline', 'none');
+  const gPanel = gauge.append('rect').attr('x', gX - 74).attr('y', gT - 44).attr('width', gW + 88)
+    .attr('height', gB - gT + 80).attr('rx', 10).attr('fill', '#ffffff').attr('fill-opacity', 0.86)
+    .attr('stroke', theme.grid);
+  gauge.append('text').attr('x', gX - 30).attr('y', gT - 24).attr('text-anchor', 'middle').attr('fill', theme.ink)
+    .style('font', `600 ${theme.size.small}px ${theme.font}`).text('Sea level');
+  const gGrad = defs.append('linearGradient').attr('id', 'vb-gauge-water').attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+  gGrad.append('stop').attr('offset', 0).attr('stop-color', theme.depth.shallow);
+  gGrad.append('stop').attr('offset', 1).attr('stop-color', theme.depth.deep);
+  defs.append('clipPath').attr('id', 'vb-gauge-tube').append('rect').attr('x', gX).attr('y', gT)
+    .attr('width', gW).attr('height', gB - gT).attr('rx', gW / 2);
+  gauge.append('rect').attr('x', gX).attr('y', gT).attr('width', gW).attr('height', gB - gT).attr('rx', gW / 2)
+    .attr('fill', theme.depth.dry);
+  const gWater = gauge.append('path').attr('clip-path', 'url(#vb-gauge-tube)').attr('fill', 'url(#vb-gauge-water)');
+  gauge.append('rect').attr('x', gX).attr('y', gT).attr('width', gW).attr('height', gB - gT).attr('rx', gW / 2)
+    .attr('fill', 'none').attr('stroke', theme.ink).attr('stroke-opacity', 0.45);
+  const gTicks = gauge.append('g').selectAll('g').data([400e3, 600e3, 1e6, 1.5e6, 2.5e6, 4e6]).join('g')
+    .attr('transform', d => `translate(0,${gy(d)})`);
+  gTicks.append('line').attr('x1', gX - 4).attr('x2', gX).attr('stroke', theme.quiet);
+  gTicks.append('text').attr('x', gX - 7).attr('dy', '0.35em').attr('text-anchor', 'end').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').text(d => aed(d).replace('AED ', ''));
+  const gHandle = gauge.append('g');
+  gHandle.append('line').attr('x1', gX - 5).attr('x2', gX + gW + 5).attr('stroke', theme.coastline).attr('stroke-width', 2.4)
+    .attr('stroke-linecap', 'round');
+  gHandle.append('rect').attr('x', gX - 70).attr('y', -10).attr('width', 62).attr('height', 20).attr('rx', 10)
+    .attr('fill', theme.coastline);
+  const gHandleText = gHandle.append('text').attr('x', gX - 39).attr('dy', '0.35em').attr('text-anchor', 'middle')
+    .attr('fill', '#ffffff').style('font', `600 10.5px ${theme.font}`);
+  gauge.append('text').attr('x', gX - 30).attr('y', gB + 24).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').text('drag ↕ · less money ↑');
+  let gaugeY = null, gaugeTarget = null;
+  function drawGauge(sec) {
+    if (gaugeY == null) return;
+    const amp = reduceMotion ? 0 : 1.1 + Math.min(3, Math.abs(gaugeTarget - gaugeY) * 0.25);
+    const top = d3.range(gX - 2, gX + gW + 3, 2).map(x => [x, gaugeY + amp * Math.sin(x * 0.55 + sec * 3.2)]);
+    gWater.attr('d', `M${top.map(p => p.join(',')).join('L')}L${gX + gW + 2},${gB + 2}L${gX - 2},${gB + 2}Z`);
+    gHandle.attr('transform', `translate(0,${gaugeY})`);
+    gTicks.attr('opacity', d => Math.abs(gy(d) - gaugeY) < 13 ? 0 : 1);
+  }
+  function setGauge(budget) {
+    gaugeTarget = gy(budget);
+    gHandleText.text(aed(budget).replace('AED ', 'AED\u00a0'));
+    gauge.attr('aria-valuenow', budget).attr('aria-valuetext', aed(budget));
+  }
 
   const commPaths = gComm.selectAll('path').data(features, commOfF).join('path')
     .attr('d', path).attr('stroke', '#ffffff').attr('stroke-width', 0.5).attr('fill', noSales)
@@ -271,25 +297,23 @@ export function createViewB(container, data, theme, { width, height }) {
 
   // ---------- the moving sea ----------
   // Each community's level eases toward its new value. Rising water reaches coastal communities
-  // first and spreads inland; falling water drains inland first. While the slider is dragged the
+  // first and spreads inland; falling water drains inland first. While the sea-level gauge is dragged the
   // sea simply follows the hand. The end state is exact; only the way there is animated.
   const idxOf = new Map(features.map((f, k) => [commOfF(f), k]));
   const levels = new Float32Array(features.length).fill(NaN);
   const targets = new Float32Array(features.length).fill(NaN);
   const startAt = new Float64Array(features.length);
   const valsFor = Sp => Float32Array.from(features, f => valueOf(Sp.get(commOfF(f))));
-  let tau = 170, raf = null, lastTick = 0;
+  let tau = 170, raf = null, lastTick = 0, levelsMoving = false, visible = true, clock = null;
+  const animateWater = !!sea && !reduceMotion;
 
   function paintSurface() {
     const grid = wf.field(levels);
-    surface.draw(grid, lut);
-    const [coast, ...depths] = wf.contours(grid, LINES).map(c => c.d);
-    depthLines.selectAll('path').data(depths).join('path').attr('d', d => d);
-    waterClip.attr('d', coast); deepClip.attr('d', depths[0]);
-    coastPath.attr('d', coast); foamPath.attr('d', coast); surfPath.attr('d', coast);
+    if (sea) sea.setField(wf.pack(grid)); else flat.draw(grid, lut);
+    coastPath.attr('d', wf.line(grid, COAST));
+    if (sea && !animateWater) sea.draw(0);
   }
-  function tick(now) {
-    const dt = Math.min(64, now - lastTick); lastTick = now;
+  function stepLevels(now, dt) {
     const k = 1 - Math.exp(-dt / tau);
     let moving = false;
     for (let i = 0; i < levels.length; i++) {
@@ -298,9 +322,26 @@ export function createViewB(container, data, theme, { width, height }) {
       const d = t - levels[i];
       if (Math.abs(d) < 0.002) levels[i] = t; else { levels[i] += d * k; moving = true; }
     }
-    paintSurface();
-    raf = moving ? requestAnimationFrame(tick) : null;
+    return moving;
   }
+  // One loop drives everything that moves: the water levels while they change, the gauge,
+  // and the waves themselves (always, while the map is on screen and motion is allowed).
+  function frame(now) {
+    const dt = Math.min(64, now - lastTick); lastTick = now;
+    if (levelsMoving) { levelsMoving = stepLevels(now, dt); paintSurface(); }
+    if (gaugeTarget != null) gaugeY = gaugeY == null || reduceMotion ? gaugeTarget
+      : gaugeY + (gaugeTarget - gaugeY) * (1 - Math.exp(-dt / 90));
+    const sec = clock ? clock() : now / 1000;
+    drawGauge(sec);
+    if (animateWater) sea.draw(sec);
+    const settling = levelsMoving || (gaugeTarget != null && Math.abs(gaugeY - gaugeTarget) > 0.2);
+    raf = visible && (animateWater || settling) ? requestAnimationFrame(frame) : null;
+  }
+  function wake() { if (!raf) { lastTick = performance.now(); raf = requestAnimationFrame(frame); } }
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => {
+    visible = es[es.length - 1].isIntersecting; if (visible) wake();
+  }).observe(svg.node());
+
   function flowTo(Snext, animate) {
     const now = performance.now();
     features.forEach((f, i) => {
@@ -311,8 +352,9 @@ export function createViewB(container, data, theme, { width, height }) {
       startAt[i] = animate ? now + (t > levels[i] ? inland(c) : 1 - inland(c)) * 450 : 0;
     });
     tau = animate ? 170 : 60;
-    if (reduceMotion) { levels.set(targets); paintSurface(); return; }
-    if (!raf) { lastTick = now; raf = requestAnimationFrame(tick); }
+    if (reduceMotion) { levels.set(targets); paintSurface(); levelsMoving = false; }
+    else levelsMoving = true;
+    wake();
   }
 
   // Tooltip
@@ -367,16 +409,33 @@ export function createViewB(container, data, theme, { width, height }) {
     })
     .on('mouseleave', () => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); });
 
+  // Gauge: drag (or click) to set the sea level; arrow keys step it, page keys jump
+  const budgetAt = y => {
+    const b = gy.invert(Math.max(gT, Math.min(gB, y)));
+    return b < 1e6 ? Math.round(b / 1e4) * 1e4 : Math.round(b / 5e4) * 5e4;
+  };
   let pending = null;
-  slider
-    .on('input', function () {
-      dragging = true;
-      pending = Math.round(toSlider.invert(+this.value) / 10000) * 10000;
-      budgetText.text(budgetLine(pending, cur.size));
-      requestAnimationFrame(() => { if (pending != null) { ev.emit('budget', pending); pending = null; } });
+  function sendBudget(b) {
+    budgetText.text(budgetLine(b, cur.size));
+    setGauge(b); wake();
+    if (pending == null) requestAnimationFrame(() => { const v = pending; pending = null; if (v != null) ev.emit('budget', v); });
+    pending = b;
+  }
+  gauge.call(d3.drag().container(svg.node())
+    .on('start', e => { if (!cur) return; dragging = true; sendBudget(budgetAt(e.y)); })
+    .on('drag', e => { if (cur) sendBudget(budgetAt(e.y)); })
+    // release after the last queued frame, so the final value is drawn without a tide delay
+    .on('end', () => requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; }))));
+  gauge
+    .on('keydown', e => {
+      const f = { ArrowUp: 1 / 1.1, ArrowDown: 1.1, PageUp: 1 / 1.5, PageDown: 1.5 }[e.key];
+      if (!f || !cur) return;
+      e.preventDefault();
+      const b = Math.max(BUDGET_MIN, Math.min(BUDGET_MAX, cur.budget * f));
+      ev.emit('budget', b < 1e6 ? Math.round(b / 1e4) * 1e4 : Math.round(b / 5e4) * 5e4);
     })
-    // release after the last queued frame, so the final drag value is drawn without a tide delay
-    .on('change', () => requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; })));
+    .on('focus', () => gPanel.attr('stroke', theme.accent).attr('stroke-width', 2))
+    .on('blur', () => gPanel.attr('stroke', theme.grid).attr('stroke-width', 1));
   const budgetLine = (b, size) => `${aed(b)} for ${size} m² → up to AED ${fmt(b / size)} per m²`;
 
   function drawData(s, animate) {
@@ -399,10 +458,10 @@ export function createViewB(container, data, theme, { width, height }) {
     };
 
     drawReadout(s, c, animate);
-    if (!dragging) slider.property('value', toSlider(s.budget));
+    setGauge(s.budget); wake();
     budgetText.text(budgetLine(s.budget, s.size));
 
-    // Tide marks and the film strip cost the most; while the slider moves they catch up a few
+    // Tide marks and the film strip cost the most; while the gauge is dragged they catch up a few
     // times a second instead of every frame, and once more when it is let go.
     clearTimeout(heavyTimer);
     if (dragging) heavyTimer = setTimeout(() => drawHeavy(s, c, shareIn), 140);
@@ -499,6 +558,8 @@ export function createViewB(container, data, theme, { width, height }) {
       prev = s;
     },
     on: ev.on,
+    // for recording demos at a steady frame rate: replace the clock (null restores real time)
+    _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
     _debug: s => ({ comparable: comparable(statsFor(s.thenPeriod, s), statsFor(s.period, s)),
       charted: chartedShare(statsFor(s.period, s)) })

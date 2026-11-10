@@ -11,6 +11,7 @@
   </style>
 </head>
 <body>
+  <div id="build" style="font: 12px ui-monospace, monospace; color: #64748b; margin-bottom: 8px"></div>
   <div id="view-b" style="width: 960px; height: 860px"></div>
   <div id="log">Loading data…</div>
 
@@ -20,9 +21,10 @@
   <script type="module">
     import { loadAll } from '../src/load.js';
     import theme from '../src/theme.js';
-    import { createViewB } from '../src/viewB.js';
+    import { createViewB, BUILD } from '../src/viewB.js';
 
     const log = document.querySelector('#log');
+    document.querySelector('#build').textContent = `Build: ${BUILD}`;   // if this line is missing or old, you are not running the latest code
     const data = await loadAll();
     const el = document.querySelector('#view-b');
     const view = createViewB(el, data, theme, el.getBoundingClientRect());
@@ -42,7 +44,7 @@
       } else set({ [keyFor[ev]]: v });
     }));
     set({});
-    log.textContent = 'Ready. Hover, click (select), shift-click (pin), click tide marks, mode buttons, the budget slider and the film strip.';
+    log.textContent = 'Ready. Hover, click (select), shift-click (pin), click tide marks, mode buttons, the sea-level gauge and the film strip.';
     window.__viewB = { view, get state() { return state; }, set };   // for automated checks
   </script>
 </body>
