@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <div id="view-b" style="width: 960px; height: 820px"></div>
+  <div id="view-b" style="width: 960px; height: 860px"></div>
   <div id="log">Loading data…</div>
 
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0"></script>
@@ -33,16 +33,16 @@
       money: 'nominal', homeType: 'apartment', selected: '346', pinned: [], hovered: null,
       unlocked: true, dropExtremes: false, highlight: null };   // '346' = Business Bay
     const set = patch => { state = { ...state, ...patch }; view.update(state); };
-    const keyFor = { select: 'selected', hover: 'hovered', mode: 'mode', thenPeriod: 'thenPeriod', period: 'period' };
-    ['select', 'pin', 'hover', 'mode', 'thenPeriod', 'period'].forEach(ev => view.on(ev, v => {
-      if (ev !== 'hover') log.textContent = `event: ${ev} → ${JSON.stringify(v)}\n` + log.textContent;
+    const keyFor = { select: 'selected', hover: 'hovered', mode: 'mode', thenPeriod: 'thenPeriod', period: 'period', budget: 'budget' };
+    ['select', 'pin', 'hover', 'mode', 'thenPeriod', 'period', 'budget'].forEach(ev => view.on(ev, v => {
+      if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}\n` + log.textContent;
       if (ev === 'pin') {
         const p = state.pinned;
         set({ pinned: p.includes(v) ? p.filter(x => x !== v) : [...p, v].slice(-4) });
       } else set({ [keyFor[ev]]: v });
     }));
     set({});
-    log.textContent = 'Ready. Hover, click (select), shift-click (pin), click tide marks, mode buttons and film strip.';
+    log.textContent = 'Ready. Hover, click (select), shift-click (pin), click tide marks, mode buttons, the budget slider and the film strip.';
     window.__viewB = { view, get state() { return state; }, set };   // for automated checks
   </script>
 </body>
