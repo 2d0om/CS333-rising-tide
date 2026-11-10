@@ -5,6 +5,7 @@
 import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createFilmstrip } from './filmstrip.js';
+import { createWaterField } from './waterfield.js';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -104,9 +105,7 @@ export function createViewB(container, data, theme, { width, height }) {
   const frameFeatures = features.filter(f => first.has(commOfF(f)) && last.has(commOfF(f)));
 
   const topo = topojson.topology({ c: { type: 'FeatureCollection', features } });
-  const commOf = g => String(g.properties.COMM_NUM);
-  const coastFor = S => topojson.mesh(topo, topo.objects.c,
-    (a, b) => a !== b && isLand(S.get(commOf(a))) !== isLand(S.get(commOf(b))));
+  const borders = topojson.mesh(topo, topo.objects.c, (a, b) => a !== b);   // community edges, drawn faintly
 
   const stations = data.metro.features.map(f => ({ name: f.properties.STATION_NAME, coords: f.geometry.coordinates }));
 
@@ -118,8 +117,13 @@ export function createViewB(container, data, theme, { width, height }) {
   const waterRamp = d3.interpolateLab(theme.depth.shallow, theme.depth.deep);
   const outOf = st => 1 - st.shareWithin;
   const depthColor = out => out < 0.5 ? sandRamp(out / 0.5) : waterRamp((out - 0.5) / 0.5);
-  const paint = st => !st ? noSales : !charted(st) ? 'url(#vb-fog)' : depthColor(outOf(st));
-  const rippleOpacity = st => charted(st) && outOf(st) >= 0.5 ? 0.25 + 0.5 * (outOf(st) - 0.5) / 0.5 : 0;
+  // Colour lookup for the surface canvas: 256 steps from 0% to 100% out of reach
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let j = 0; j < 256; j++) { const c = d3.rgb(depthColor(j / 255)); lut.set([c.r, c.g, c.b], j * 3); }
+  const COAST = 0.5, LINES = [COAST, 0.7, 0.85];                  // coastline, then two depth lines
+  const valueOf = st => charted(st) ? outOf(st) : NaN;            // NaN: no water surface here
+  const baseFill = st => !st ? noSales : !charted(st) ? 'url(#vb-fog)' : 'none';
+  const look = { lut, COAST, valueOf, baseFill };                 // shared with the film strip
 
   // ---------- layout ----------
   const toolbarH = 76, keyH = 40, stripH = 150, gap = 10;
@@ -157,8 +161,8 @@ export function createViewB(container, data, theme, { width, height }) {
   const kw = 300, kh = 12;
   const keySvg = key.append('svg').attr('width', kw + 20).attr('height', 34).attr('aria-hidden', true);
   const kg = keySvg.append('defs').append('linearGradient').attr('id', 'vb-key');
-  [[0, theme.depth.dry], [0.5, theme.depth.wet], [0.5, theme.depth.shallow], [1, theme.depth.deep]]
-    .forEach(([o, c]) => kg.append('stop').attr('offset', o).attr('stop-color', c));
+  [...d3.range(0, 0.5, 0.05), 0.4999, 0.5, ...d3.range(0.55, 1.001, 0.05)]
+    .forEach(t => kg.append('stop').attr('offset', t).attr('stop-color', depthColor(t)));
   keySvg.append('rect').attr('x', 10).attr('y', 4).attr('width', kw).attr('height', kh).attr('rx', 2)
     .attr('fill', 'url(#vb-key)').attr('stroke', theme.grid);
   keySvg.append('line').attr('x1', 10 + kw / 2).attr('x2', 10 + kw / 2).attr('y1', 1).attr('y2', 4 + kh + 3)
@@ -180,6 +184,7 @@ export function createViewB(container, data, theme, { width, height }) {
   const projection = d3.geoMercator().fitExtent([[16, 16], [width - 16, mapH - 16]],
     { type: 'FeatureCollection', features: frameFeatures });
   const path = d3.geoPath(projection);
+  const wf = createWaterField(features, projection, width, mapH, { cell: 4 });
 
   const defs = svg.append('defs');
   const hatch = defs.append('pattern').attr('id', 'vb-fog').attr('patternUnits', 'userSpaceOnUse')
@@ -187,13 +192,24 @@ export function createViewB(container, data, theme, { width, height }) {
   hatch.append('rect').attr('width', 6).attr('height', 6).attr('fill', '#ffffff');
   hatch.append('line').attr('x1', 0).attr('y1', 0).attr('x2', 0).attr('y2', 6)
     .attr('stroke', theme.fog).attr('stroke-width', 2.2);
-  // Ripples drift slowly over submerged communities only (still when reduced motion is on)
-  const ripple = defs.append('pattern').attr('id', 'vb-ripple').attr('patternUnits', 'userSpaceOnUse')
-    .attr('width', 40).attr('height', 16);
-  ripple.append('path').attr('d', 'M0 8 Q 10 4.5 20 8 T 40 8').attr('fill', 'none')
-    .attr('stroke', '#ffffff').attr('stroke-width', 0.8).attr('stroke-opacity', 0.45);
-  if (!reduceMotion) ripple.append('animateTransform').attr('attributeName', 'patternTransform')
-    .attr('type', 'translate').attr('from', '0 0').attr('to', '40 0').attr('dur', '9s').attr('repeatCount', 'indefinite');
+  // Water texture: short broken glints rather than stripes, in two layers that drift at different
+  // speeds and directions, so the surface reads as moving water. Still when reduced motion is on.
+  const glints = (id, w, h, strokes, width, dur, dx) => {
+    const pat = defs.append('pattern').attr('id', id).attr('patternUnits', 'userSpaceOnUse')
+      .attr('width', w).attr('height', h);
+    strokes.forEach(([x, y, len, op]) => pat.append('path')
+      .attr('d', `M${x} ${y} q ${len / 2} ${-len / 6} ${len} 0`).attr('fill', 'none').attr('stroke', '#ffffff')
+      .attr('stroke-width', width).attr('stroke-linecap', 'round').attr('stroke-opacity', op));
+    if (!reduceMotion) pat.append('animateTransform').attr('attributeName', 'patternTransform')
+      .attr('type', 'translate').attr('from', '0 0').attr('to', `${dx} 0`).attr('dur', dur).attr('repeatCount', 'indefinite');
+  };
+  glints('vb-ripple', 140, 70, [[6, 12, 18, .55], [52, 8, 12, .4], [96, 20, 22, .5], [24, 38, 14, .45],
+    [74, 44, 20, .55], [118, 56, 12, .4], [40, 62, 16, .35], [108, 33, 9, .35]], 0.9, '11s', 140);
+  glints('vb-swell', 230, 110, [[10, 24, 60, .3], [120, 52, 70, .26], [40, 88, 54, .22], [170, 98, 44, .2]],
+    1.2, '24s', -230);
+  const chartedClip = defs.append('clipPath').attr('id', 'vb-charted');
+  const waterClip = defs.append('clipPath').attr('id', 'vb-water').append('path');
+  const deepClip = defs.append('clipPath').attr('id', 'vb-deep').append('path');
 
   svg.append('rect').attr('width', width).attr('height', mapH).attr('fill', theme.realSea);
   // Open sea sits in the bottom-left corner of this frame, clear of every community
@@ -201,22 +217,40 @@ export function createViewB(container, data, theme, { width, height }) {
     .attr('fill', theme.quiet).style('font-size', `${theme.size.small}px`).style('font-style', 'italic')
     .text('Arabian Gulf (the real sea)');
 
+  // Layers: community shapes (fog, no sales, and the mouse targets) under one water surface.
+  // Everything of the sea sits in one group clipped to the charted communities, so it never
+  // spills where there is no data (and the browser clips once, not once per layer).
   const gComm = svg.append('g');
-  const gWater = svg.append('g').attr('pointer-events', 'none');
-  const gTide = svg.append('g');
-  const gGhost = svg.append('g').attr('pointer-events', 'none');
-  const coastPath = svg.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
-    .attr('stroke-width', 2.2).attr('stroke-linejoin', 'round').attr('pointer-events', 'none');
-  const previewPath = svg.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
-    .attr('stroke-width', 2.2).attr('stroke-dasharray', '6 4').attr('opacity', 0).attr('pointer-events', 'none');
+  const gSea = svg.append('g').attr('clip-path', 'url(#vb-charted)').attr('pointer-events', 'none');
+  const surface = wf.makeCanvas();
+  gSea.append('foreignObject').attr('x', wf.box.x).attr('y', wf.box.y)
+    .attr('width', wf.box.width).attr('height', wf.box.height).node().appendChild(surface.canvas);
+  const depthLines = gSea.append('g').attr('fill', 'none').attr('stroke', '#ffffff')
+    .attr('stroke-width', 0.8).attr('stroke-opacity', 0.3);
+  gSea.append('rect').attr('width', width).attr('height', mapH).attr('fill', 'url(#vb-ripple)')
+    .attr('clip-path', 'url(#vb-water)');
+  gSea.append('rect').attr('width', width).attr('height', mapH).attr('fill', 'url(#vb-swell)')
+    .attr('clip-path', 'url(#vb-deep)');
+  gSea.append('path').attr('d', path(borders)).attr('fill', 'none').attr('stroke', '#ffffff')
+    .attr('stroke-width', 0.6).attr('stroke-opacity', 0.45);
+  const gTide = gSea.append('g').attr('pointer-events', 'stroke');
+  // The shore: a soft band of surf with foam that laps along the coastline, then the coastline itself
+  const foamPath = gSea.append('path').attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 7)
+    .attr('stroke-opacity', 0.3).attr('stroke-linejoin', 'round');
+  const surfPath = gSea.append('path').attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1.4)
+    .attr('stroke-opacity', 0.85).attr('stroke-dasharray', '2 10').attr('stroke-linecap', 'round');
+  if (!reduceMotion) surfPath.append('animate').attr('attributeName', 'stroke-dashoffset')
+    .attr('values', '0;-12;-24').attr('dur', '3s').attr('repeatCount', 'indefinite');
+  const coastPath = gSea.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
+    .attr('stroke-width', 2).attr('stroke-linejoin', 'round');
+  const previewPath = gSea.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
+    .attr('stroke-width', 2.2).attr('stroke-dasharray', '6 4').attr('opacity', 0);
   const gStations = svg.append('g').attr('pointer-events', 'none');
   const gMarks = svg.append('g').attr('pointer-events', 'none');
 
   const commPaths = gComm.selectAll('path').data(features, commOfF).join('path')
     .attr('d', path).attr('stroke', '#ffffff').attr('stroke-width', 0.5).attr('fill', noSales)
     .style('cursor', 'pointer');
-  const waterPaths = gWater.selectAll('path').data(features, commOfF).join('path')
-    .attr('d', path).attr('fill', 'url(#vb-ripple)').attr('opacity', 0);
 
   gStations.selectAll('circle').data(stations.filter(s => {
     const [x, y] = projection(s.coords); return x >= 0 && x <= width && y >= 0 && y <= mapH;
@@ -235,6 +269,52 @@ export function createViewB(container, data, theme, { width, height }) {
   const inlandScale = d3.scaleLinear().domain(d3.extent([...inlandRaw.values()].filter(Number.isFinite))).clamp(true);
   const inland = c => inlandScale(inlandRaw.get(c) ?? 0);
 
+  // ---------- the moving sea ----------
+  // Each community's level eases toward its new value. Rising water reaches coastal communities
+  // first and spreads inland; falling water drains inland first. While the slider is dragged the
+  // sea simply follows the hand. The end state is exact; only the way there is animated.
+  const idxOf = new Map(features.map((f, k) => [commOfF(f), k]));
+  const levels = new Float32Array(features.length).fill(NaN);
+  const targets = new Float32Array(features.length).fill(NaN);
+  const startAt = new Float64Array(features.length);
+  const valsFor = Sp => Float32Array.from(features, f => valueOf(Sp.get(commOfF(f))));
+  let tau = 170, raf = null, lastTick = 0;
+
+  function paintSurface() {
+    const grid = wf.field(levels);
+    surface.draw(grid, lut);
+    const [coast, ...depths] = wf.contours(grid, LINES).map(c => c.d);
+    depthLines.selectAll('path').data(depths).join('path').attr('d', d => d);
+    waterClip.attr('d', coast); deepClip.attr('d', depths[0]);
+    coastPath.attr('d', coast); foamPath.attr('d', coast); surfPath.attr('d', coast);
+  }
+  function tick(now) {
+    const dt = Math.min(64, now - lastTick); lastTick = now;
+    const k = 1 - Math.exp(-dt / tau);
+    let moving = false;
+    for (let i = 0; i < levels.length; i++) {
+      const t = targets[i];
+      if (t !== t || now < startAt[i]) { if (t === t && levels[i] !== t) moving = true; continue; }
+      const d = t - levels[i];
+      if (Math.abs(d) < 0.002) levels[i] = t; else { levels[i] += d * k; moving = true; }
+    }
+    paintSurface();
+    raf = moving ? requestAnimationFrame(tick) : null;
+  }
+  function flowTo(Snext, animate) {
+    const now = performance.now();
+    features.forEach((f, i) => {
+      const t = valueOf(Snext.get(commOfF(f)));
+      targets[i] = t;
+      if (t !== t || levels[i] !== levels[i]) { levels[i] = t; startAt[i] = 0; return; }   // appears or leaves: no tween
+      const c = commOfF(f);
+      startAt[i] = animate ? now + (t > levels[i] ? inland(c) : 1 - inland(c)) * 450 : 0;
+    });
+    tau = animate ? 170 : 60;
+    if (reduceMotion) { levels.set(targets); paintSurface(); return; }
+    if (!raf) { lastTick = now; raf = requestAnimationFrame(tick); }
+  }
+
   // Tooltip
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
     .style('background', '#ffffff').style('border', `1px solid ${theme.grid}`).style('border-radius', '8px')
@@ -249,11 +329,10 @@ export function createViewB(container, data, theme, { width, height }) {
 
   // Film strip (small multiples, one mini-map per period)
   const strip = createFilmstrip(root.append('div').style('margin-top', `${gap}px`).node(),
-    frameFeatures, features, theme, { width, height: stripH }, paint, p => ev.emit('period', p));
+    frameFeatures, features, theme, { width, height: stripH }, look, p => ev.emit('period', p));
 
   // ---------- state-driven drawing ----------
   let prev = null, cur = null, S = new Map(), dragging = false, readoutValues = null;
-  const lastOut = new Map();   // community -> share out of reach last drawn (for the tide direction)
 
   function tipForCommunity(c) {
     const st = S.get(c);
@@ -283,7 +362,7 @@ export function createViewB(container, data, theme, { width, height }) {
     .on('click', (event, m) => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); ev.emit('mode', m); })
     .on('mouseenter', (event, m) => {
       if (!cur || m === cur.mode) return;
-      previewPath.attr('d', path(coastFor(statsFor(cur.period, { ...cur, mode: m })))).attr('opacity', 1);
+      previewPath.attr('d', wf.line(wf.field(valsFor(statsFor(cur.period, { ...cur, mode: m }))), COAST)).attr('opacity', 1);
       coastPath.attr('opacity', 0.25);   // fade today's coastline so the preview stands out
     })
     .on('mouseleave', () => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); });
@@ -304,36 +383,11 @@ export function createViewB(container, data, theme, { width, height }) {
     const S0 = S;
     S = statsFor(s.period, s);
 
-    // Fills: animate as a tide when the change is a deliberate step; follow the finger while dragging.
-    const dur = animate ? 600 : 90;
-    const delayOf = f => {
-      if (!animate) return 0;
-      const c = commOfF(f), st = S.get(c);
-      const now = charted(st) ? outOf(st) : -1, before = lastOut.get(c) ?? now;
-      const rising = now >= before;
-      return (rising ? inland(c) : 1 - inland(c)) * 450;
-    };
-    commPaths.interrupt().transition().delay(delayOf).duration(dur).ease(d3.easeCubicInOut)
-      .attr('fill', f => paint(S.get(commOfF(f))));
-    waterPaths.interrupt().transition().delay(delayOf).duration(dur).ease(d3.easeCubicInOut)
-      .attr('opacity', f => rippleOpacity(S.get(commOfF(f))));
-    features.forEach(f => { const st = S.get(commOfF(f)); lastOut.set(commOfF(f), charted(st) ? outOf(st) : -1); });
-
-    // Coastline: on a deliberate step the old line fades out and the new one draws itself.
-    const newCoast = path(coastFor(S));
-    const oldCoast = coastPath.attr('d');
-    coastPath.interrupt().attr('d', newCoast).attr('stroke-dasharray', null).attr('stroke-dashoffset', null);
-    if (animate && oldCoast && oldCoast !== newCoast && !reduceMotion) {
-      gGhost.append('path').attr('d', oldCoast).attr('fill', 'none').attr('stroke', theme.coastline)
-        .attr('stroke-width', 2.2).attr('opacity', 0.7)
-        .transition().duration(1000).attr('opacity', 0).remove();
-      const len = coastPath.node().getTotalLength() || 0;
-      if (len) {
-        coastPath.attr('stroke-dasharray', `${len} ${len}`).attr('stroke-dashoffset', len)
-          .transition().delay(200).duration(850).ease(d3.easeCubicInOut).attr('stroke-dashoffset', 0)
-          .on('end', () => coastPath.attr('stroke-dasharray', null).attr('stroke-dashoffset', null));
-      }
-    }
+    // Shapes that are not water: fog hatching and no-sales grey; the surface covers the rest
+    commPaths.attr('fill', f => baseFill(S.get(commOfF(f))));
+    chartedClip.selectAll('path').data(features.filter(f => charted(S.get(commOfF(f)))), commOfF)
+      .join('path').attr('d', path);
+    flowTo(S, animate);
 
     // One measure everywhere: the share of the comparable communities (20+ sales in both
     // the "then" and the current period) that are land. Readout, film strip and tide marks agree.
@@ -344,16 +398,31 @@ export function createViewB(container, data, theme, { width, height }) {
       return ch.length ? ch.filter(x => isLand(Sp.get(x))).length / ch.length : NaN;
     };
 
+    drawReadout(s, c, animate);
+    if (!dragging) slider.property('value', toSlider(s.budget));
+    budgetText.text(budgetLine(s.budget, s.size));
+
+    // Tide marks and the film strip cost the most; while the slider moves they catch up a few
+    // times a second instead of every frame, and once more when it is let go.
+    clearTimeout(heavyTimer);
+    if (dragging) heavyTimer = setTimeout(() => drawHeavy(s, c, shareIn), 140);
+    else drawHeavy(s, c, shareIn);
+    return S0;
+  }
+
+  let heavyTimer = null;
+  function drawHeavy(s, c, shareIn) {
     // Tide marks: coastlines of earlier periods
     const earlier = PERIOD_KEYS.slice(0, PERIOD_KEYS.indexOf(s.period));
     const tides = earlier.map(p => {
       const Sp = statsFor(p, s);
-      return { p, d: path(coastFor(Sp)), share: shareIn(Sp) };
+      return { p, d: wf.line(wf.field(valsFor(Sp)), COAST), share: shareIn(Sp) };
     });
     const tg = gTide.selectAll('g').data(tides, t => t.p).join(enter => {
       const g = enter.append('g').style('cursor', 'pointer');
       g.append('path').attr('class', 'tide-line').attr('fill', 'none').attr('stroke', theme.coastline)
-        .attr('stroke-width', 1.3).attr('stroke-opacity', 0.4);
+        .attr('stroke-width', 1.2).attr('stroke-opacity', 0.55)
+        .attr('stroke-dasharray', '1 3.5').attr('stroke-linecap', 'round');
       g.append('path').attr('class', 'tide-hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 9);
       return g;
     });
@@ -365,16 +434,10 @@ export function createViewB(container, data, theme, { width, height }) {
       .on('mouseleave', hideTip)
       .on('click', (event, t) => ev.emit('thenPeriod', t.p));
 
-    drawReadout(s, c, animate);
-
     strip.update(PERIOD_KEYS.map(p => {
       const Sp = statsFor(p, s);
-      return { p, S: Sp, coast: coastFor(Sp), share: shareIn(Sp) };
-    }), s.period, animate);
-
-    if (!dragging) slider.property('value', toSlider(s.budget));
-    budgetText.text(budgetLine(s.budget, s.size));
-    return S0;
+      return { p, S: Sp, share: shareIn(Sp) };
+    }), s.period);
   }
 
   // Readout: the numbers count to their new values instead of jumping
