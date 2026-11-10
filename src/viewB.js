@@ -142,17 +142,17 @@ export function createViewB(container, data, theme, { width, height }) {
   const fillOf = cls => cls === 'fog' ? 'url(#vb-fog)' : cls === 'none' ? noSales : theme.depth[cls];
 
   svg.append('rect').attr('width', width).attr('height', mapH).attr('fill', theme.realSea);
-  const gulf = projection([55.03, 25.24]);
-  svg.append('text').attr('x', gulf[0]).attr('y', gulf[1]).attr('text-anchor', 'middle')
+  // Open sea sits in the bottom-left corner of this frame, clear of every community
+  svg.append('text').attr('x', 24).attr('y', mapH - 24).attr('text-anchor', 'start')
     .attr('fill', theme.quiet).style('font-size', `${theme.size.small}px`).style('font-style', 'italic')
     .text('Arabian Gulf (the real sea)');
 
   const gComm = svg.append('g');
   const gTide = svg.append('g');
-  const previewPath = svg.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
-    .attr('stroke-width', 1.6).attr('stroke-dasharray', '5 4').attr('opacity', 0).attr('pointer-events', 'none');
   const coastPath = svg.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
     .attr('stroke-width', 2.2).attr('stroke-linejoin', 'round').attr('pointer-events', 'none');
+  const previewPath = svg.append('path').attr('fill', 'none').attr('stroke', theme.coastline)
+    .attr('stroke-width', 2.2).attr('stroke-dasharray', '6 4').attr('opacity', 0).attr('pointer-events', 'none');
   const gStations = svg.append('g').attr('pointer-events', 'none');
   const gMarks = svg.append('g').attr('pointer-events', 'none');
 
@@ -226,12 +226,13 @@ export function createViewB(container, data, theme, { width, height }) {
     });
 
   modeButtons
-    .on('click', (event, m) => ev.emit('mode', m))
+    .on('click', (event, m) => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); ev.emit('mode', m); })
     .on('mouseenter', (event, m) => {
       if (!cur || m === cur.mode) return;
-      previewPath.attr('d', path(coastFor(statsFor(cur.period, { ...cur, mode: m })))).attr('opacity', 0.9);
+      previewPath.attr('d', path(coastFor(statsFor(cur.period, { ...cur, mode: m })))).attr('opacity', 1);
+      coastPath.attr('opacity', 0.25);   // fade today's coastline so the preview stands out
     })
-    .on('mouseleave', () => previewPath.attr('opacity', 0));
+    .on('mouseleave', () => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); });
 
   function drawData(s) {
     S = statsFor(s.period, s);
@@ -255,8 +256,8 @@ export function createViewB(container, data, theme, { width, height }) {
     });
     const tg = gTide.selectAll('g').data(tides, t => t.p).join(enter => {
       const g = enter.append('g').style('cursor', 'pointer');
-      g.append('path').attr('class', 'tide-line').attr('fill', 'none').attr('stroke', theme.depth.deep)
-        .attr('stroke-width', 1.2).attr('stroke-opacity', 0.35);
+      g.append('path').attr('class', 'tide-line').attr('fill', 'none').attr('stroke', theme.coastline)
+        .attr('stroke-width', 1.3).attr('stroke-opacity', 0.4);
       g.append('path').attr('class', 'tide-hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 9);
       return g;
     });
