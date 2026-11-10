@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev — View B (The Sea)</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 24px; font-family: 'DM Sans', system-ui, sans-serif; color: #1d2733; background: #ffffff; }
+    #log { font: 12px/1.5 ui-monospace, monospace; color: #64748b; margin-top: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="view-b" style="width: 960px; height: 820px"></div>
+  <div id="log">Loading data…</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-server@3.0.1"></script>
+  <script type="module">
+    import { loadAll } from '../src/load.js';
+    import theme from '../src/theme.js';
+    import { createViewB } from '../src/viewB.js';
+
+    const log = document.querySelector('#log');
+    const data = await loadAll();
+    const el = document.querySelector('#view-b');
+    const view = createViewB(el, data, theme, el.getBoundingClientRect());
+
+    // Dev-only stand-in for main.js: apply this view's own events to a local state,
+    // so the view can be tested alone. main.js replaces this when everything is wired.
+    let state = { budget: 1200000, size: 80, period: '2024-26', thenPeriod: '2015-17', mode: 'all',
+      money: 'nominal', homeType: 'apartment', selected: '346', pinned: [], hovered: null,
+      unlocked: true, dropExtremes: false, highlight: null };   // '346' = Business Bay
+    const set = patch => { state = { ...state, ...patch }; view.update(state); };
+    const keyFor = { select: 'selected', hover: 'hovered', mode: 'mode', thenPeriod: 'thenPeriod', period: 'period' };
+    ['select', 'pin', 'hover', 'mode', 'thenPeriod', 'period'].forEach(ev => view.on(ev, v => {
+      if (ev !== 'hover') log.textContent = `event: ${ev} → ${JSON.stringify(v)}\n` + log.textContent;
+      if (ev === 'pin') {
+        const p = state.pinned;
+        set({ pinned: p.includes(v) ? p.filter(x => x !== v) : [...p, v].slice(-4) });
+      } else set({ [keyFor[ev]]: v });
+    }));
+    set({});
+    log.textContent = 'Ready. Hover, click (select), shift-click (pin), click tide marks, mode buttons and film strip.';
+    window.__viewB = { view, get state() { return state; }, set };   // for automated checks
+  </script>
+</body>
+</html>
