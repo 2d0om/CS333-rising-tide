@@ -6,13 +6,13 @@
   <title>Dev — View B (The Sea)</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body { margin: 24px; font-family: 'DM Sans', system-ui, sans-serif; color: #1d2733; background: #ffffff; }
-    #log { font: 12px/1.5 ui-monospace, monospace; color: #64748b; margin-top: 12px; white-space: pre-wrap; }
+    body { margin: 16px; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; color: #1d2733; background: #ffffff; }
+    #log { font: 11px/16px ui-monospace, monospace; color: #64748b; height: 16px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   </style>
 </head>
 <body>
-  <div id="build" style="font: 12px ui-monospace, monospace; color: #64748b; margin-bottom: 8px"></div>
-  <div id="view-b" style="width: 960px; height: 860px"></div>
+  <div id="build" style="font: 11px ui-monospace, monospace; color: #64748b; height: 16px"></div>
+  <div id="view-b"></div>
   <div id="log">Loading data…</div>
 
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0"></script>
@@ -27,7 +27,9 @@
     document.querySelector('#build').textContent = `Build: ${BUILD}`;   // if this line is missing or old, you are not running the latest code
     const data = await loadAll();
     const el = document.querySelector('#view-b');
-    const view = createViewB(el, data, theme, el.getBoundingClientRect());
+    // fill the window so everything is visible at once (main.js decides the real size)
+    const size = { width: Math.min(1480, innerWidth - 32), height: Math.max(560, innerHeight - 32 - 16 - 22) };
+    const view = createViewB(el, data, theme, size);
 
     // Dev-only stand-in for main.js: apply this view's own events to a local state,
     // so the view can be tested alone. main.js replaces this when everything is wired.
@@ -37,7 +39,7 @@
     const set = patch => { state = { ...state, ...patch }; view.update(state); };
     const keyFor = { select: 'selected', hover: 'hovered', mode: 'mode', thenPeriod: 'thenPeriod', period: 'period', budget: 'budget' };
     ['select', 'pin', 'hover', 'mode', 'thenPeriod', 'period', 'budget'].forEach(ev => view.on(ev, v => {
-      if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}\n` + log.textContent;
+      if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}`;
       if (ev === 'pin') {
         const p = state.pinned;
         set({ pinned: p.includes(v) ? p.filter(x => x !== v) : [...p, v].slice(-4) });
