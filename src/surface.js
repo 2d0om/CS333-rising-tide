@@ -2,9 +2,10 @@
 //
 // The map's colours are drawn by the SVG underneath, exactly from the data. This one transparent
 // layer only adds movement on top, inside masks rasterised from the same community shapes:
-//   water — long smooth swells lit by a low sun, a soft sheen, and foam that laps along the coast;
-//   fog   — drifting 3D clouds over communities with too few sales (lit from one side so they
-//           have volume), soft at the edges, never fully opaque.
+//   water — a warped wave surface lit by a low sun: darker troughs, lighter faces, the sky mirrored
+//           in the slopes, a soft highlight on the crests, and foam that laps along the coast;
+//   fog   — 3D clouds over communities with too few sales that churn in place (time is the third
+//           axis of the noise), lit from one side so they have volume, never fully opaque.
 // Names, borders, the coastline and selections are drawn in an SVG above this layer, so they
 // stay sharp through the fog. When the sea moves, the old and new masks cross-fade, so water,
 // foam and fog glide to their new places instead of jumping.
@@ -34,14 +35,31 @@ float fbm(vec2 p) {
   for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; }
   return v;
 }
-vec2 wave(vec2 p, vec2 dir, float len, float amp, float speed, float t, float warp) {
-  float k = 6.2832 / len;
-  return dir * (k * amp * cos(dot(dir, p) * k - t * speed + warp));
+// 3D value noise: the third axis is time, so the fog churns where it is instead of sliding away
+float hash3(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
+float noise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), u.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), u.x), u.y);
+  float b = mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), u.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), u.x), u.y);
+  return mix(a, b, u.z);
 }
-float cloud(vec2 p, float t) {
-  float a = fbm(p / 95.0 + vec2(t * 0.022, t * 0.009));
-  float b = fbm(p / 48.0 - vec2(t * 0.035, -t * 0.015) + 5.2);
-  return clamp(a * 0.7 + b * 0.5 - 0.18, 0.0, 1.0);
+float fbm3(vec3 p) {
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * noise3(p); p = p * 2.02 + vec3(11.3, 7.1, 3.7); a *= 0.5; }
+  return v;
+}
+
+// Water surface height: three swells from the Gulf, bent by a slow warp so crests are never straight,
+// plus fine wind ripples. Everything moves slowly and continuously.
+float sea(vec2 p, float t) {
+  vec2 w = vec2(fbm(p / 210.0 + vec2(t * 0.010, 0.0)), fbm(p / 210.0 + vec2(5.2, t * 0.008))) - 0.5;
+  vec2 q = p + w * 90.0;
+  float h = 0.0;
+  h += sin(dot(q, vec2(0.80, 0.60)) / 15.0 - t * 0.75) * 0.50;
+  h += sin(dot(q, vec2(0.45, 0.89)) / 9.5 - t * 1.00) * 0.28;
+  h += sin(dot(q, vec2(0.97, 0.24)) / 6.0 - t * 1.35) * 0.14;
+  h += (fbm(q / 11.0 + vec2(t * 0.16, t * 0.10)) - 0.5) * 0.26;
+  return h;
 }
 
 void main() {
@@ -54,25 +72,27 @@ void main() {
   vec4 col = vec4(0.0);
 
   if (water > 0.01) {
-    // swell from the Gulf (north-west), a cross-swell, and slow fine ripples
-    float warp = noise(p / 150.0 + vec2(t * 0.012, -t * 0.008)) * 6.2832;
-    vec2 g = wave(p, normalize(vec2(0.80, 0.60)), 110.0, 3.0, 0.42, t, warp)
-           + wave(p, normalize(vec2(0.55, 0.85)), 64.0, 1.5, 0.58, t, warp * 0.6)
-           + wave(p, normalize(vec2(0.95, 0.30)), 33.0, 0.55, 0.80, t, 1.3);
-    vec2 q = p / 14.0 + vec2(t * 0.09, t * 0.06);
-    float n0 = noise(q);
-    g += vec2(noise(q + vec2(0.2, 0.0)) - n0, noise(q + vec2(0.0, 0.2)) - n0) * 0.3;
-    vec3 n = normalize(vec3(-g * 0.55, 1.0));
+    float e = 1.2;
+    float h = sea(p, t);
+    vec2 g = vec2(sea(p + vec2(e, 0.0), t) - h, sea(p + vec2(0.0, e), t) - h) / e;
+    vec3 n = normalize(vec3(-g * 4.6, 1.0));
     vec3 L = normalize(vec3(-0.45, -0.55, 0.70));
-    vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+    vec3 V = vec3(0.0, 0.0, 1.0);
+    // troughs a little darker, faces toward the sun a little lighter
     float l = dot(n, L) - L.z;
-    float aLight = l > 0.0 ? min(l * 0.7, 0.14) : min(-l * 0.55, 0.11);
-    vec3 cLight = l > 0.0 ? vec3(1.0) : vec3(0.03, 0.10, 0.20);
+    float aLight = l > 0.0 ? min(l * 0.55, 0.16) : min(-l * 0.5, 0.15);
+    vec3 cLight = l > 0.0 ? vec3(0.92, 0.97, 1.0) : vec3(0.02, 0.08, 0.17);
     col = vec4(cLight * aLight, aLight);
-    float sheen = pow(max(dot(n, H), 0.0), 26.0) * 0.12;
-    col = col * (1.0 - sheen) + vec4(vec3(sheen), sheen);
+    // the sky mirrored in the wave faces (fresnel), and a soft sun highlight on the crests
+    float fres = pow(1.0 - max(n.z, 0.0), 2.2) * 0.9;
+    vec3 sky = vec3(0.86, 0.93, 1.0);
+    float aSky = clamp(fres, 0.0, 0.22);
+    col = col * (1.0 - aSky) + vec4(sky * aSky, aSky);
+    vec3 Hh = normalize(L + V);
+    float spec = pow(max(dot(n, Hh), 0.0), 70.0) * 0.32 + pow(max(dot(n, Hh), 0.0), 12.0) * 0.05;
+    col = col * (1.0 - spec) + vec4(vec3(1.0, 0.99, 0.95) * spec, spec);
     // foam: a soft line along the shore and gentle laps rolling toward it
-    float breakup = 0.55 + 0.45 * smoothstep(0.3, 0.7, noise(p / 7.0 + vec2(t * 0.12, -t * 0.05)));
+    float breakup = 0.55 + 0.45 * smoothstep(0.3, 0.7, noise(p / 6.0 + vec2(t * 0.12, -t * 0.05)));
     float edge = smoothstep(0.42, 0.72, land);
     float lap = smoothstep(0.82, 1.0, sin(land * 24.0 - t * 1.25 + noise(p / 36.0) * 3.0)) * smoothstep(0.06, 0.32, land);
     float foam = clamp(edge * 0.7 + lap * 0.4, 0.0, 0.8) * breakup;
@@ -81,12 +101,14 @@ void main() {
   }
 
   if (fog > 0.01) {
-    // two cloud layers drifting at different speeds give depth; light from the north-west gives volume
-    float d = cloud(p, t);
-    float dl = cloud(p + vec2(-7.0, -7.0), t);
-    float shade = clamp(0.78 + (d - dl) * 3.2, 0.42, 1.1);
-    vec3 fc = mix(vec3(0.58, 0.64, 0.72), vec3(1.0), shade);
-    float a = fog * (0.55 + 0.4 * smoothstep(0.1, 0.75, d));
+    // volumetric-looking fog: density from 3D noise evolving in time (it churns in place), lit from the
+    // north-west by sampling the density a step toward the light (thicker toward the light = shadowed)
+    vec3 q = vec3(p / 64.0, t * 0.07);
+    float d = clamp(fbm3(q) * 1.25 - 0.18, 0.0, 1.0);
+    float dl = clamp(fbm3(q + vec3(-0.09, -0.09, 0.0)) * 1.25 - 0.18, 0.0, 1.0);
+    float shade = clamp(0.82 + (d - dl) * 3.4, 0.38, 1.12);
+    vec3 fc = mix(vec3(0.55, 0.61, 0.70), vec3(1.0), shade);
+    float a = fog * (0.5 + 0.42 * smoothstep(0.12, 0.78, d));
     col = col * (1.0 - a) + vec4(fc * a, a);
   }
   gl_FragColor = col;

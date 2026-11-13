@@ -1,34 +1,34 @@
 // src/viewB.js — View B, "The Sea" (Member 2)
-// Sand is where your budget reaches; the deeper the water, the fewer homes you could buy.
+// Sand is where your budget buys a typical home; water is where it does not, deeper where fewer
+// homes are within reach.
 // Contract: createViewB(container, data, theme, { width, height }) -> { update(state), on(event, handler) }
-// Emits: select, pin, hover, mode, thenPeriod, period, budget.
+// Emits: select, pin, hover, mode, thenPeriod, budget.
 //
 // Design rules for this view:
-//   * What matters is on screen without hovering, in as few words as possible: one headline,
-//     the then → now numbers inside the mode buttons, the communities that went under (outlined,
-//     counted in the key), and the reach chart with its two numbers and one arrow.
-//     Hover and click only add detail (overview first, details on demand).
+//   * Plain words and counts, not percentages of abstractions: "AED 1.2M buys a typical 80 m²
+//     apartment in 26 of 35 neighbourhoods in 2015–17, but only 11 in 2024–26."
+//   * What matters is on screen without hovering: the headline, every neighbourhood's name on the
+//     map, the price ladder (each neighbourhood's typical price then → now against your budget
+//     line), and orange marks on the neighbourhoods that went under. Hover and click add detail.
 //   * Every colour is exact: one fill per community from its own sales. The coastline runs along
-//     real community borders, never interpolated. The moving water and fog (surface.js) only add
-//     light and texture on top; names, borders, the coastline and selections stay above them.
+//     real community borders, never interpolated. Moving water and fog (surface.js) only add light
+//     and texture; names, borders, the coastline and selections stay above them.
 //   * Everything fits one screen: the map on the left, the story and the controls on the right.
-//   * Only things that respond look like they respond: communities with data, fog (hover only),
-//     earlier coastlines, the curve and the budget line. Areas with no sales do nothing.
+//   * Only things that respond look like they respond. Areas with no sales do nothing.
 import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · one-screen layout, moving sea, 3D fog · 2026-11-13';
+export const BUILD = 'View B · names, price ladder, real water, 3D fog · 2026-11-14';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
 const fmt = d3.format(',.0f');
 const pctFmt = d3.format('.0%');
 const aed = v => v >= 1e6 ? `AED ${d3.format('.2~f')(v / 1e6)}M` : `AED ${d3.format(',.0f')(v / 1e3)}k`;
+const short$ = v => v >= 1e6 ? `${d3.format('.2~f')(v / 1e6)}M` : `${d3.format(',.0f')(v / 1e3)}k`;
 const MODE_LABEL = { all: 'All homes', ready: 'Ready', offplan: 'Off-plan' };
-const BUDGET_MIN = 400000, BUDGET_MAX = 4000000;
-const DOWNTOWN = '345';                       // Burj Khalifa community: the reference for "distance from the centre"
-const LANDMARKS = ['345', '392', '381', '681', '521'];   // orientation labels only
+const BUDGET_MIN = 400000, BUDGET_MAX = 4000000;   // typical 80 m² prices run 0.4M–2.8M (off-plan up to 4M)
 const roundBudget = b => b < 1e6 ? Math.round(b / 1e4) * 1e4 : Math.round(b / 5e4) * 5e4;
 const ceilBudget = b => Math.ceil(b / 1e4) * 1e4;
 
@@ -38,7 +38,12 @@ const titleCase = s => s.toLowerCase().replace(/(^|[\s(/-])([a-z])/g, (m, a, b) 
 const NOT_ACRONYM = /^(AL|EL|THE|AND|OF|BAY|CITY|PARK|BIN|BU|UMM|ABU|RAS|NAD|NADD|HILL|HILLS|ONE|TWO|NEW|OLD|WEST|EAST)$/;
 const nice = s => s.split(/\s+/).map(w => /^[A-Z]{2,4}$/.test(w) && !NOT_ACRONYM.test(w) ? w
   : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-const SHORT = { 'Jumeirah Village Circle': 'JVC', 'Jumeirah Village Triangle': 'JVT' };   // map labels only
+// Shorter forms for tight spaces (map labels and ladder rows); the full name is in the tooltip
+const SHORT = { 'Jumeirah Village Circle': 'JVC', 'Jumeirah Village Triangle': 'JVT', 'Dubai World Central': 'Dubai South',
+  'Jumeirah Lake Towers': 'JLT', 'Dubai Investment Park Second': 'DIP 2', 'Dubai Investment Park First': 'DIP 1',
+  'DMCC Master Community': 'DMCC' };
+const shortName = n => SHORT[n] || n.replace(' Second', ' 2').replace(' First', ' 1')
+  .replace(' Third', ' 3').replace(' Fourth', ' 4').replace(' Fifth', ' 5');
 
 // GeoJSON from the course may wind rings the "wrong" way for d3 (which then fills the whole globe).
 function rewound(f) {
@@ -59,7 +64,6 @@ export function createViewB(container, data, theme, { width, height }) {
   const features = data.geo.features.map(rewound);
   const commOfF = f => String(f.properties.COMM_NUM);
   const byComm = new Map(features.map(f => [commOfF(f), f]));
-  const pop = c => +(byComm.get(c)?.properties['Population 2019'] || 0);
   const official = c => titleCase(byComm.get(c)?.properties.CNAME_E || `Community ${c}`);
 
   const homeSales = data.rows
@@ -94,7 +98,7 @@ export function createViewB(container, data, theme, { width, height }) {
     return m;
   }
   const statsCache = new Map();
-  function statsFor(period, s) {           // Map comm -> { n, p50, shareWithin, edge }
+  function statsFor(period, s) {           // Map comm -> { n, shareWithin, edge }
     const key = [period, s.mode, s.homeType, s.money, s.dropExtremes, s.budget, s.size].join('|');
     if (statsCache.has(key)) return statsCache.get(key);
     if (statsCache.size > 400) statsCache.clear();
@@ -103,9 +107,9 @@ export function createViewB(container, data, theme, { width, height }) {
     for (const [comm, a] of pricesBy(period, s)) {
       out.set(comm, {
         n: a.length,
-        p50: d3.quantileSorted(a, 0.5),
         shareWithin: d3.bisectRight(a, thr) / a.length,
-        // the smallest budget at which half the homes here are within reach: where this community becomes land
+        // the price of a typical home of your size: the smallest budget that reaches half the homes
+        // sold here. At this budget the community turns from water to sand.
         edge: a[Math.ceil(a.length * 0.5) - 1] * s.size
       });
     }
@@ -116,23 +120,12 @@ export function createViewB(container, data, theme, { width, height }) {
   const isLand = st => charted(st) && st.shareWithin >= 0.5;
   const isWater = st => charted(st) && st.shareWithin < 0.5;
 
-  function comparable(S1, S2) {            // like-for-like shares between two periods
+  function comparable(S1, S2) {            // like-for-like: 20+ sales in both periods
     const both = [...S2.keys()].filter(c => charted(S2.get(c)) && charted(S1.get(c)));
     const land = S => both.filter(c => isLand(S.get(c)));
-    const popAll = d3.sum(both, pop);
-    return {
-      set: both,
-      n: both.length,
-      land1: both.length ? land(S1).length / both.length : NaN,
-      land2: both.length ? land(S2).length / both.length : NaN,
-      res1: popAll ? d3.sum(land(S1), pop) / popAll : NaN,
-      res2: popAll ? d3.sum(land(S2), pop) / popAll : NaN
-    };
+    return { set: both, n: both.length, k1: land(S1).length, k2: land(S2).length,
+      land1: both.length ? land(S1).length / both.length : NaN, land2: both.length ? land(S2).length / both.length : NaN };
   }
-  const chartedShare = S => {
-    const c = [...S.values()].filter(charted);
-    return c.length ? c.filter(isLand).length / c.length : NaN;
-  };
 
   // Frame the map on the communities that can be compared over time (charted in the first and last period).
   const base = { mode: 'all', homeType: 'apartment', money: 'nominal', dropExtremes: false };
@@ -148,43 +141,40 @@ export function createViewB(container, data, theme, { width, height }) {
     const A = S.get(commOfG(a)), B = S.get(commOfG(b));
     return (isLand(A) && isWater(B)) || (isWater(A) && isLand(B));
   });
-  const geoCentroid = new Map(features.map(f => [commOfF(f), d3.geoCentroid(f)]));
-  const kmFromCentre = c => geoCentroid.has(DOWNTOWN) && geoCentroid.has(c)
-    ? d3.geoDistance(geoCentroid.get(DOWNTOWN), geoCentroid.get(c)) * 6371 : NaN;
   const stations = data.metro.features.map(f => ({ coords: f.geometry.coordinates }));
 
   // ---------- encoding ----------
   // Depth = share of homes OUT of reach. Sand darkens from 0% to 50%; at 50% the coastline is
   // crossed and water deepens to 100%. Lightness carries the order; hue only says sand or sea.
-  const noSales = '#f4f5f7';   // neutral and quiet: no sales must not read as affordable, or invite a hover
+  const noSales = '#f4f5f7';
   const sandRamp = d3.interpolateLab(theme.depth.dry, theme.depth.wet);
   const waterRamp = d3.interpolateLab(theme.depth.shallow, theme.depth.deep);
   const outOf = st => 1 - st.shareWithin;
   const depthColor = out => out < 0.5 ? sandRamp(out / 0.5) : waterRamp((out - 0.5) / 0.5);
-  const lineGrey = '#c3cad3';
+  const thenColor = '#8a95a3';
+  const homeWord = () => (cur && cur.homeType === 'villa') ? 'villa' : 'apartment';
 
   // ---------- layout ----------
-  // Wide: map on the left at full height, a panel on the right (headline, which homes, budget,
-  // reach chart with the budget bar, key). Narrow: the panel goes under the map.
+  // Wide: map on the left at full height; a panel on the right (headline, which homes, the price
+  // ladder with the budget bar under it). Narrow: the panel goes under the map.
   const wide = width >= 900;
   const colGap = 22;
-  const panelW = wide ? Math.round(Math.max(320, Math.min(400, width * 0.32))) : width;
+  const panelW = wide ? Math.round(Math.max(360, Math.min(440, width * 0.33))) : width;
   const mapW = wide ? width - panelW - colGap : width;
-  let chartH = 240;                                          // set below from the room the panel has left
-  const mapH = wide ? height : Math.max(340, height - 600 - colGap);
+  const mapH = wide ? height : Math.max(360, height - 640 - colGap);
 
   root.style('display', 'flex').style('flex-direction', wide ? 'row' : 'column').style('gap', `${colGap}px`)
     .style('width', `${width}px`).style('height', `${height}px`);
   const mapBox = root.append('div').style('position', 'relative').style('width', `${mapW}px`).style('height', `${mapH}px`)
     .style('flex', 'none').style('border-radius', '12px').style('overflow', 'hidden');
   const panel = root.append('div').style('width', `${panelW}px`).style('flex', 'none').style('display', 'flex')
-    .style('flex-direction', 'column').style('gap', '14px').style('min-width', '0');
+    .style('flex-direction', 'column').style('gap', '12px').style('min-width', '0');
 
-  // 1. One sentence: the finding
-  const headline = panel.append('div').style('font-size', `${theme.size.label + 3}px`).style('line-height', '1.4')
-    .style('min-height', '64px');
+  // 1. The finding, in one or two plain sentences
+  const headline = panel.append('div').style('font-size', `${theme.size.label + 2}px`).style('line-height', '1.45')
+    .style('min-height', '62px');
 
-  // 2. Which homes: each option carries its own then → now numbers
+  // 2. Which homes; each option shows its own then → now count
   const modeGroup = panel.append('div').attr('role', 'group').attr('aria-label', 'Which homes')
     .style('display', 'grid').style('grid-template-columns', '1fr 1fr 1fr').style('padding', '3px').style('gap', '2px')
     .style('background', '#eef1f5').style('border-radius', '10px');
@@ -196,52 +186,23 @@ export function createViewB(container, data, theme, { width, height }) {
   const modeNums = modeButtons.append('div').style('font-weight', 400).style('font-size', '11px')
     .style('font-variant-numeric', 'tabular-nums');
 
-  // 3. Your budget, large
-  const budgetBlock = panel.append('div');
-  budgetBlock.append('div').style('font-size', '11px').style('letter-spacing', '0.06em').style('text-transform', 'uppercase')
-    .style('color', theme.quiet).text('Your budget');
-  const budgetBig = budgetBlock.append('div').style('font-size', '26px').style('font-weight', 700).style('min-height', '31px')
-    .style('font-variant-numeric', 'tabular-nums').style('line-height', '1.2');
-  const budgetSub = budgetBlock.append('div').style('font-size', `${theme.size.small}px`).style('color', theme.quiet).style('min-height', '17px');
-
-  // 4. Reach chart + budget bar (built below), with a one-line legend above it
-  const chartHead = panel.append('div');
-  chartHead.append('div').style('font', `600 ${theme.size.small}px ${theme.font}`).text('How much of the city it reaches');
-  const chartLegend = chartHead.append('div').style('font-size', '11px').style('color', theme.quiet)
-    .style('display', 'flex').style('flex-wrap', 'wrap').style('gap', '2px 12px').style('margin-top', '3px').style('min-height', '32px');
+  // 3. The price ladder: what a typical home costs in each neighbourhood, then → now, against your budget
+  const ladderHead = panel.append('div').style('min-height', '34px');
+  const ladderTitle = ladderHead.append('div').style('font', `600 ${theme.size.small}px ${theme.font}`);
+  ladderHead.append('div').style('font-size', '11px').style('color', theme.quiet).style('margin-top', '2px').html(
+    `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;border:1.5px solid ${thenColor};vertical-align:-1px"></span> then ` +
+    `→ <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${theme.depth.deep};vertical-align:-1px"></span> now, ` +
+    `filled in its map colour · <span style="color:${theme.accent};font-weight:600">orange</span>: went under · ` +
+    `<span style="color:${theme.ink}">sorted by price now</span>`);
   const chartBox = panel.append('div');
 
-  // 5. Key
-  const fogBg = `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`;
-  const swatch = (bg, border = theme.grid, w = 12) => `<span style="display:inline-block;width:${w}px;height:12px;border-radius:2px;` +
-    `border:1.5px solid ${border};background:${bg};vertical-align:-2px;margin-right:5px"></span>`;
-  const key = panel.append('div').style('display', 'flex').style('flex-wrap', 'wrap').style('align-items', 'center')
-    .style('gap', '6px 14px').style('font-size', `${theme.size.small}px`).style('color', theme.ink)
-    .style('margin-top', 'auto');
-  const kw = Math.min(200, panelW - 120), kh = 10;
-  const keyItem = key.append('span').style('display', 'inline-flex').style('align-items', 'center').style('gap', '6px');
-  keyItem.append('span').text('Homes within budget');
-  const keySvg = keyItem.append('svg').attr('width', kw + 16).attr('height', 26).attr('aria-hidden', true);
-  const kg = keySvg.append('defs').append('linearGradient').attr('id', 'vb-key');
-  [...d3.range(0, 0.5, 0.05), 0.4999, 0.5, ...d3.range(0.55, 1.001, 0.05)]
-    .forEach(t => kg.append('stop').attr('offset', t).attr('stop-color', depthColor(t)));
-  keySvg.append('rect').attr('x', 8).attr('y', 2).attr('width', kw).attr('height', kh).attr('rx', 2)
-    .attr('fill', 'url(#vb-key)');
-  keySvg.append('line').attr('x1', 8 + kw / 2).attr('x2', 8 + kw / 2).attr('y1', 0).attr('y2', kh + 4)
-    .attr('stroke', theme.coastline).attr('stroke-width', 2);
-  [[0, 'all'], [0.5, 'half'], [1, 'none']].forEach(([o, t]) =>
-    keySvg.append('text').attr('x', 8 + o * kw).attr('y', 24).attr('text-anchor', o === 0 ? 'start' : o === 1 ? 'end' : 'middle')
-      .attr('fill', theme.quiet).style('font-size', '10px').text(t));
-  const keyFlip = key.append('span');
-  key.append('span').attr('class', 'vb-key-fog');
-  key.append('span').html(`${swatch(noSales)}no sales`);
-
-  // ---------- map: data underneath, moving water and fog in the middle, labels and lines on top ----------
+  // ---------- map: data underneath, moving water and fog in the middle, names and lines on top ----------
+  const legendH = 50;
   const svg = mapBox.append('svg').attr('width', mapW).attr('height', mapH)
     .attr('viewBox', `0 0 ${mapW} ${mapH}`).attr('role', 'img')
-    .attr('aria-label', 'Map of Dubai communities: sand where your budget reaches, water where it does not')
+    .attr('aria-label', 'Map of Dubai neighbourhoods: sand where your budget buys a typical home, water where it does not')
     .style('display', 'block').style('position', 'absolute').style('left', 0).style('top', 0);
-  const projection = d3.geoMercator().fitExtent([[18, 18], [mapW - 18, mapH - 18]],
+  const projection = d3.geoMercator().fitExtent([[18, 18], [mapW - 18, mapH - legendH - 14]],
     { type: 'FeatureCollection', features: frameFeatures });
   const path = d3.geoPath(projection);
 
@@ -253,16 +214,14 @@ export function createViewB(container, data, theme, { width, height }) {
     .attr('stroke', theme.fog).attr('stroke-width', 2.2);
 
   const seaRect = svg.append('rect').attr('width', mapW).attr('height', mapH).attr('fill', theme.realSea);
-  svg.append('text').attr('x', 18).attr('y', mapH - 18).attr('fill', theme.quiet)
+  svg.append('text').attr('x', 18).attr('y', 26).attr('fill', theme.quiet)
     .style('font-size', `${theme.size.small}px`).style('font-style', 'italic').attr('pointer-events', 'none')
     .text('Arabian Gulf (the real sea)');
-  const gComm = svg.append('g');
-  const commPaths = gComm.selectAll('path').data(features, commOfF).join('path')
+  const commPaths = svg.append('g').selectAll('path').data(features, commOfF).join('path')
     .attr('d', path).attr('fill', noSales).attr('stroke', '#ffffff').attr('stroke-width', 0.6);
 
   const surface = createSurface(mapW, mapH);
   if (surface) mapBox.node().appendChild(surface.canvas);
-  key.select('.vb-key-fog').html(`${swatch(surface ? 'radial-gradient(circle at 35% 35%,#ffffff,#c4ccd6)' : fogBg)}fog: under 20 sales`);
 
   const top = mapBox.append('svg').attr('width', mapW).attr('height', mapH).attr('aria-hidden', true)
     .style('position', 'absolute').style('left', 0).style('top', 0).style('pointer-events', 'none');
@@ -277,21 +236,32 @@ export function createViewB(container, data, theme, { width, height }) {
     .attr('stroke-width', 2.2).attr('stroke-dasharray', '6 4').attr('opacity', 0);
   const gFlip = top.append('g');
   const gStations = top.append('g');
-  const gLabels = top.append('g');
   const gMarks = top.append('g');
+  const gLabels = top.append('g');
 
   gStations.selectAll('circle').data(stations.filter(s => {
-    const [x, y] = projection(s.coords); return x >= 0 && x <= mapW && y >= 0 && y <= mapH;
+    const [x, y] = projection(s.coords); return x >= 0 && x <= mapW && y >= 0 && y <= mapH - legendH;
   })).join('circle')
     .attr('cx', d => projection(d.coords)[0]).attr('cy', d => projection(d.coords)[1])
-    .attr('r', 1.6).attr('fill', theme.ink).attr('fill-opacity', 0.35);
+    .attr('r', 1.5).attr('fill', theme.ink).attr('fill-opacity', 0.3);
 
-  // A few well-known places, so the spread from the centre to the suburbs can be read
-  gLabels.selectAll('text').data(LANDMARKS.filter(c => byComm.has(c))).join('text')
-    .attr('x', c => path.centroid(byComm.get(c))[0]).attr('y', c => path.centroid(byComm.get(c))[1])
-    .attr('text-anchor', 'middle').attr('dy', '0.35em').attr('fill', theme.ink).attr('fill-opacity', 0.85)
-    .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-opacity', 0.85).attr('stroke-width', 3)
-    .style('font', `600 11px ${theme.font}`).text(c => SHORT[nameOf(c)] || nameOf(c));
+  // Legend band along the bottom of the map: what sand, water, orange and fog mean
+  const legend = mapBox.append('div').style('position', 'absolute').style('left', 0).style('right', 0).style('bottom', 0)
+    .style('height', `${legendH}px`).style('background', 'rgba(255,255,255,0.93)').style('border-top', `1px solid ${theme.grid}`)
+    .style('display', 'flex').style('align-items', 'center').style('gap', '18px').style('padding', '0 14px')
+    .style('font-size', '11.5px').style('line-height', '1.35').style('pointer-events', 'none');
+  const kw = 150;
+  const legScale = legend.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '8px');
+  const legSvg = legScale.append('svg').attr('width', kw).attr('height', 30).attr('aria-hidden', true);
+  const kg = legSvg.append('defs').append('linearGradient').attr('id', 'vb-key');
+  [...d3.range(0, 0.5, 0.05), 0.4999, 0.5, ...d3.range(0.55, 1.001, 0.05)]
+    .forEach(t => kg.append('stop').attr('offset', t).attr('stop-color', depthColor(t)));
+  legSvg.append('rect').attr('y', 4).attr('width', kw).attr('height', 10).attr('rx', 2).attr('fill', 'url(#vb-key)');
+  legSvg.append('line').attr('x1', kw / 2).attr('x2', kw / 2).attr('y1', 1).attr('y2', 17).attr('stroke', theme.coastline).attr('stroke-width', 2);
+  [[0, 'all', 'start'], [kw / 2, 'half', 'middle'], [kw, 'none', 'end']].forEach(([x, t, a]) =>
+    legSvg.append('text').attr('x', x).attr('y', 28).attr('text-anchor', a).attr('fill', theme.quiet).style('font-size', '10px').text(t));
+  const legText = legScale.append('div');
+  const legOther = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '2px');
 
   // How far inland each community lies, to order the tide: a rising sea reaches coastal communities
   // first; a falling one drains inland first. The Gulf is north-west, so inland runs south-east.
@@ -299,67 +269,160 @@ export function createViewB(container, data, theme, { width, height }) {
   const inlandScale = d3.scaleLinear().domain(d3.extent([...inlandRaw.values()].filter(Number.isFinite))).clamp(true);
   const inland = c => inlandScale(inlandRaw.get(c) ?? 0);
 
-  // ---------- reach chart + budget bar ----------
-  // Top: how much of the city a budget reaches (x = budget, log; y = share of the comparable
-  // communities within reach; every step is one community). "Then" and "now" are the two lines that
-  // matter; the gap between them is shaded; one arrow shows the extra money that reaches as far now.
-  // Bottom: the budget bar, on the same x scale. The budget line runs from the chart down into its handle.
-  const CW = panelW;
-  // The chart takes whatever height the panel has left, so nothing needs scrolling
-  {
-    const used = [headline, modeGroup, budgetBlock, chartHead, key].reduce((t, d) => t + d.node().getBoundingClientRect().height, 0);
-    const room = (wide ? height : 600) - used - 14 * 5 - 16;
-    chartH = Math.max(190, Math.min(340, room));
+  // ---------- names on the map ----------
+  // Every neighbourhood with sales gets its name. A label goes inside its shape where it fits (at the
+  // point furthest from the edges); otherwise just outside with a short leader line; labels never overlap.
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  const textW = (t, px, wt = 600) => { measureCtx.font = `${wt} ${px}px ${theme.font}`; return measureCtx.measureText(t).width; };
+  const splitName = t => {
+    if (t.length <= 13 || !t.includes(' ')) return [t];
+    const w = t.split(' ');
+    let best = [t], score = Infinity;
+    for (let i = 1; i < w.length; i++) {
+      const a = w.slice(0, i).join(' '), b = w.slice(i).join(' ');
+      const sc = Math.max(a.length, b.length);
+      if (sc < score) { score = sc; best = [a, b]; }
+    }
+    return best;
+  };
+  const anchorCache = new Map();
+  function anchorOf(f) {                   // pole of inaccessibility of the largest part, by grid search
+    const c = commOfF(f);
+    if (anchorCache.has(c)) return anchorCache.get(c);
+    const g = f.geometry;
+    const polys = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(poly => poly.map(r => r.map(projection)));
+    const outer = d3.greatest(polys.map(p => p[0]), r => Math.abs(d3.polygonArea(r)));
+    let res = null;
+    if (outer) {
+      const [x0, x1] = d3.extent(outer, p => p[0]), [y0, y1] = d3.extent(outer, p => p[1]);
+      const step = Math.max(2, Math.min(x1 - x0, y1 - y0) / 14);
+      const segDist = (px, py) => {
+        let m = Infinity;
+        for (let i = 0, j = outer.length - 1; i < outer.length; j = i++) {
+          const [ax, ay] = outer[j], [bx, by] = outer[i];
+          const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+          const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+          m = Math.min(m, Math.hypot(px - ax - t * dx, py - ay - t * dy));
+        }
+        return m;
+      };
+      let best = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, d: -1 };
+      for (let y = y0 + step / 2; y < y1; y += step) for (let x = x0 + step / 2; x < x1; x += step) {
+        if (!d3.polygonContains(outer, [x, y])) continue;
+        const d = segDist(x, y);
+        if (d > best.d) best = { x, y, d };
+      }
+      res = { x: best.x, y: best.y, ring: outer, area: Math.abs(d3.polygonArea(outer)) };
+    }
+    anchorCache.set(c, res);
+    return res;
   }
-  const chart = chartBox.append('svg').attr('width', CW).attr('height', chartH)
-    .style('display', 'block').style('overflow', 'visible');
-  const cm = { l: 36, r: 14, t: 8 };
-  const plotB = chartH - 70, barY = plotB + 32;
-  const cx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([cm.l, CW - cm.r]).clamp(true);
-  const cy = d3.scaleLinear().domain([0, 1]).range([plotB, cm.t]);
-  const cdefs = chart.append('defs');
-  cdefs.append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
-    .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
-  cdefs.append('marker').attr('id', 'vb-arrow').attr('viewBox', '0 0 10 10').attr('refX', 9).attr('refY', 5)
-    .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto-start-reverse')
-    .append('path').attr('d', 'M0,1L9,5L0,9z').attr('fill', theme.depth.deep);
-  const thenColor = '#8a95a3';
+  let labelKey = null;
+  function placeLabels(s, list) {
+    const key = [s.period, s.mode, s.homeType, s.dropExtremes].join('|');
+    if (key === labelKey) return;
+    labelKey = key;
+    const placed = [];
+    const overlaps = b => placed.some(p => b.x0 < p.x1 + 2 && b.x1 > p.x0 - 2 && b.y0 < p.y1 + 1 && b.y1 > p.y0 - 1);
+    const inMap = b => b.x0 > 4 && b.x1 < mapW - 4 && b.y0 > 4 && b.y1 < mapH - legendH - 4;
+    const items = list.map(c => {
+      const f = byComm.get(c), a = anchorOf(f);
+      if (!a) return null;
+      const x = a.x, y = a.y;
+      if (x < 0 || x > mapW || y < 0 || y > mapH - legendH) return null;
+      return { c, a, lines: splitName(shortName(nameOf(c))), n: (S.get(c) || {}).n || 0 };
+    }).filter(Boolean);
+    const box = (cx, cy, lines, px) => {
+      const w = d3.max(lines, l => textW(l, px)), h = lines.length * px * 1.1;
+      return { x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2, w, h };
+    };
+    const fits = (b, ring) => [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1], [(b.x0 + b.x1) / 2, b.y0], [(b.x0 + b.x1) / 2, b.y1]]
+      .every(p => d3.polygonContains(ring, p));
+    const out = [];
+    // inside first, biggest shapes first
+    items.sort((p, q) => q.a.area - p.a.area).forEach(it => {
+      for (const px of [11, 9.5, 8.5]) {
+        const b = box(it.a.x, it.a.y, it.lines, px);
+        if (fits(b, it.a.ring) && !overlaps(b)) { placed.push(b); out.push({ ...it, px, x: it.a.x, y: it.a.y, inside: true }); return; }
+      }
+      it.outside = true;
+    });
+    // then outside with a leader, busiest first
+    items.filter(it => it.outside).sort((p, q) => q.n - p.n).forEach(it => {
+      const px = 9.5;
+      for (const r of [14, 22, 32, 44]) for (let k = 0; k < 12; k++) {
+        const ang = (k / 12) * 2 * Math.PI + 0.3;
+        const b0 = box(0, 0, it.lines, px);
+        const cx = it.a.x + Math.cos(ang) * (r + b0.w / 2), cy = it.a.y + Math.sin(ang) * (r + b0.h / 2);
+        const b = box(cx, cy, it.lines, px);
+        if (inMap(b) && !overlaps(b)) {
+          placed.push(b);
+          out.push({ ...it, px, x: cx, y: cy, inside: false, lx: it.a.x + Math.cos(ang) * 3, ly: it.a.y + Math.sin(ang) * 3,
+            ex: cx - Math.cos(ang) * (b.w / 2 + 2), ey: cy - Math.sin(ang) * (b.h / 2 + 1) });
+          return;
+        }
+      }
+    });
+    const g = gLabels.selectAll('g.lab').data(out, d => d.c).join(enter => {
+      const e = enter.append('g').attr('class', 'lab');
+      e.append('line').attr('stroke', theme.ink).attr('stroke-opacity', 0.45).attr('stroke-width', 0.8);
+      e.append('circle').attr('r', 1.6).attr('fill', theme.ink).attr('fill-opacity', 0.6);
+      e.append('text').attr('text-anchor', 'middle').attr('fill', theme.ink).attr('paint-order', 'stroke')
+        .attr('stroke', '#ffffff').attr('stroke-opacity', 0.9).attr('stroke-linejoin', 'round');
+      return e;
+    });
+    g.select('line').attr('x1', d => d.inside ? null : d.lx).attr('y1', d => d.inside ? null : d.ly)
+      .attr('x2', d => d.inside ? null : d.ex).attr('y2', d => d.inside ? null : d.ey).attr('opacity', d => d.inside ? 0 : 1);
+    g.select('circle').attr('cx', d => d.a.x).attr('cy', d => d.a.y).attr('opacity', d => d.inside ? 0 : 1);
+    g.select('text').attr('x', d => d.x).attr('y', d => d.y - (d.lines.length - 1) * d.px * 0.55)
+      .attr('stroke-width', d => d.px > 10 ? 3 : 2.6).style('font', d => `600 ${d.px}px ${theme.font}`)
+      .selectAll('tspan').data(d => d.lines.map((l, i) => ({ l, i, d }))).join('tspan')
+      .attr('x', t => t.d.x).attr('dy', t => t.i === 0 ? '0.35em' : `${t.d.px * 1.1}px`).text(t => t.l);
+  }
 
-  const gGrid = chart.append('g').attr('pointer-events', 'none');
-  [0, 0.5, 1].forEach(v => {
-    gGrid.append('line').attr('x1', cm.l).attr('x2', CW - cm.r).attr('y1', cy(v)).attr('y2', cy(v))
-      .attr('stroke', theme.grid).attr('stroke-dasharray', v === 0.5 ? '3 3' : null);
-    gGrid.append('text').attr('x', cm.l - 8).attr('y', cy(v)).attr('dy', '0.35em').attr('text-anchor', 'end')
-      .attr('fill', theme.quiet).style('font-size', '10.5px').text(pctFmt(v));
-  });
-  const plotBg = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.l - cm.r)
-    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
-  const band = chart.append('path').attr('fill', theme.depth.shallow).attr('fill-opacity', 0.16).attr('pointer-events', 'none');
-  const gLines = chart.append('g');
-  const budgetLine = chart.append('line').attr('y1', cm.t - 2).attr('y2', barY)
-    .attr('stroke', theme.ink).attr('stroke-opacity', 0.55).attr('stroke-width', 1).attr('pointer-events', 'none');
-  const gEq = chart.append('g');
-  const gDots = chart.append('g').attr('pointer-events', 'none');
-  const gPick = chart.append('g').attr('pointer-events', 'none');   // the selected / hovered community on the lines
+  // ---------- the price ladder + budget bar ----------
+  const CW = panelW;
+  const used = [headline, modeGroup, ladderHead].reduce((t, d) => t + d.node().getBoundingClientRect().height, 0);
+  const LH = Math.max(320, Math.min(760, (wide ? height : 640) - used - 12 * 3 - 4));
+  const ladder = chartBox.append('svg').attr('width', CW).attr('height', LH).style('display', 'block').style('overflow', 'visible');
+  const lm = { l: Math.min(150, Math.round(CW * 0.34)), r: 16, t: 6 };
+  const barY = LH - 40, rowsB = barY - 26;
+  const lx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([lm.l, CW - lm.r]).clamp(true);
+  const ldefs = ladder.append('defs');
+  ldefs.append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
+    .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
+  const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
+  const gGrid = ladder.append('g').attr('pointer-events', 'none');
+  gGrid.selectAll('line').data(tickVals).join('line').attr('x1', v => lx(v)).attr('x2', v => lx(v))
+    .attr('y1', lm.t).attr('y2', rowsB).attr('stroke', theme.grid).attr('stroke-width', 1);
+  const gRows = ladder.append('g');
+  const divider = ladder.append('g').attr('pointer-events', 'none');
+  divider.append('line').attr('x1', 0).attr('x2', CW).attr('stroke', theme.ink).attr('stroke-opacity', 0.35).attr('stroke-dasharray', '3 3');
+  const divUp = divider.append('text').attr('x', CW).attr('text-anchor', 'end').attr('fill', theme.ink)
+    .style('font', `600 10.5px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
+  const divDown = divider.append('text').attr('x', CW).attr('text-anchor', 'end').attr('fill', theme.depth.deep)
+    .style('font', `600 10.5px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
+  const budgetLine = ladder.append('line').attr('y1', lm.t - 2).attr('y2', barY)
+    .attr('stroke', theme.ink).attr('stroke-opacity', 0.6).attr('stroke-width', 1.2).attr('pointer-events', 'none');
+  const eqMark = ladder.append('g').style('cursor', 'pointer');
 
   // Budget bar: a thin track, the part your budget covers filled, a round handle with a soft shadow
-  const tickVals = [400e3, 600e3, 1e6, 1.5e6, 2.5e6, 4e6];
-  const barHit = chart.append('rect').attr('x', cm.l - 10).attr('y', barY - 16).attr('width', CW - cm.l - cm.r + 20)
+  const barHit = ladder.append('rect').attr('x', lm.l - 10).attr('y', barY - 16).attr('width', CW - lm.l - lm.r + 20)
     .attr('height', 32).attr('fill', 'transparent').style('cursor', 'pointer');
-  chart.append('rect').attr('x', cm.l).attr('y', barY - 4).attr('width', CW - cm.l - cm.r).attr('height', 8).attr('rx', 4)
+  ladder.append('text').attr('x', lm.l - 14).attr('y', barY).attr('dy', '0.35em').attr('text-anchor', 'end')
+    .attr('fill', theme.ink).style('font', `600 ${theme.size.small}px ${theme.font}`).text('Your budget');
+  ladder.append('rect').attr('x', lm.l).attr('y', barY - 4).attr('width', CW - lm.l - lm.r).attr('height', 8).attr('rx', 4)
     .attr('fill', '#e3e8ee').attr('pointer-events', 'none');
-  const barFill = chart.append('rect').attr('x', cm.l).attr('y', barY - 4).attr('height', 8).attr('rx', 4)
+  const barFill = ladder.append('rect').attr('x', lm.l).attr('y', barY - 4).attr('height', 8).attr('rx', 4)
     .attr('fill', theme.depth.deep).attr('pointer-events', 'none');
-  chart.append('g').attr('pointer-events', 'none').selectAll('circle').data(tickVals).join('circle')
-    .attr('cx', v => cx(v)).attr('cy', barY).attr('r', 1.4).attr('fill', '#ffffff').attr('fill-opacity', 0.9);
-  const tickLabels = chart.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
-    .attr('x', v => cx(v)).attr('y', barY + 25).attr('text-anchor', 'middle').attr('fill', theme.quiet)
-    .style('font-size', '10.5px').text(v => aed(v).replace('AED ', ''));
-  const knob = chart.append('g').attr('tabindex', 0).attr('role', 'slider')
+  const tickLabels = ladder.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
+    .attr('x', v => lx(v)).attr('y', barY + 26).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').text(v => short$(v));
+  const knob = ladder.append('g').attr('tabindex', 0).attr('role', 'slider')
     .attr('aria-label', 'Your budget. Arrow keys change it.')
     .attr('aria-valuemin', BUDGET_MIN).attr('aria-valuemax', BUDGET_MAX).style('cursor', 'grab').style('outline', 'none');
   const knobHalo = knob.append('circle').attr('r', 17).attr('fill', theme.depth.deep).attr('fill-opacity', 0);
-  const knobDot = knob.append('circle').attr('r', 10).attr('fill', '#ffffff').attr('stroke', theme.depth.deep)
+  knob.append('circle').attr('r', 10).attr('fill', '#ffffff').attr('stroke', theme.depth.deep)
     .attr('stroke-width', 2.5).attr('filter', 'url(#vb-knob-shadow)');
   const bubble = knob.append('g').attr('transform', 'translate(0,27)');
   const bubbleRect = bubble.append('rect').attr('y', -11).attr('height', 22).attr('rx', 11).attr('fill', theme.ink);
@@ -368,23 +431,22 @@ export function createViewB(container, data, theme, { width, height }) {
   knob.on('mouseenter', () => knobHalo.transition().duration(150).attr('fill-opacity', 0.12))
     .on('mouseleave', () => { if (!dragging) knobHalo.transition().duration(200).attr('fill-opacity', 0); })
     .on('focus', () => knobHalo.attr('fill-opacity', 0.18)).on('blur', () => knobHalo.attr('fill-opacity', 0));
-  const step = d3.line().curve(d3.curveStepAfter).x(d => cx(d[0])).y(d => cy(d[1]));
-  const stepArea = d3.area().curve(d3.curveStepAfter).x(d => cx(d[0])).y0(d => cy(d[1])).y1(d => cy(d[2]));
 
   // ---------- tooltip ----------
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
     .style('background', '#ffffff').style('border', `1px solid ${theme.grid}`).style('border-radius', '8px')
     .style('padding', '7px 10px').style('font-size', `${theme.size.small}px`).style('line-height', '1.45')
-    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.08)').style('max-width', '260px').style('opacity', 0).style('z-index', 3);
+    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.08)').style('max-width', '280px').style('opacity', 0).style('z-index', 3);
   function showTip(event, html) {
     const [x, y] = d3.pointer(event, container);
-    tip.html(html).style('opacity', 1).style('left', `${Math.min(x + 14, width - 270)}px`).style('top', `${Math.min(y + 14, height - 110)}px`);
+    const left = x + 300 > width ? x - 294 : x + 14;
+    tip.html(html).style('opacity', 1).style('left', `${left}px`).style('top', `${Math.min(y + 14, height - 120)}px`);
   }
   const hideTip = () => tip.style('opacity', 0);
 
   // ---------- state ----------
   let prev = null, cur = null, S = new Map(), Sthen = new Map(), C = null, dragging = false;
-  let readoutValues = null, flipped = [], periodsInfo = [];
+  let flipped = [], rows = [];
   const lastOut = new Map();
 
   // ---------- interactions ----------
@@ -403,9 +465,9 @@ export function createViewB(container, data, theme, { width, height }) {
     const head = `<strong>${nameOf(c)}</strong>${aka}<br>`;
     if (!charted(st)) return `${head}Only ${st ? st.n : 0} sale${st && st.n === 1 ? '' : 's'} in ${periodLabel(cur.period)}: too few to trust (20 needed).`;
     const same = cur.thenPeriod === cur.period;
-    const half = `Half the homes here from <strong>${aed(st.edge)}</strong>` +
-      (!same && charted(stThen) ? ` <span style="color:${theme.quiet}">(${aed(stThen.edge)} in ${periodLabel(cur.thenPeriod)})</span>` : '');
-    return `${head}<strong>${pctFmt(st.shareWithin)}</strong> of homes within your budget · ${fmt(st.n)} sales<br>${half}<br>` +
+    return `${head}Typical ${cur.size} m² ${homeWord()}: <strong>${aed(st.edge)}</strong>` +
+      (!same && charted(stThen) ? ` <span style="color:${theme.quiet}">(${aed(stThen.edge)} in ${periodLabel(cur.thenPeriod)})</span>` : '') +
+      `<br>${pctFmt(st.shareWithin)} of the ${fmt(st.n)} homes sold here are within your budget<br>` +
       `<span style="color:${theme.quiet}">${statusOf(c, cur)}</span>`;
   }
   const kindOf = c => { const st = S.get(c); return charted(st) ? 'data' : st ? 'fog' : 'none'; };
@@ -429,13 +491,13 @@ export function createViewB(container, data, theme, { width, height }) {
   });
 
   modeButtons
-    .on('click', (event, m) => { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); ev.emit('mode', m); })
+    .on('click', (event, m) => { endPreview(); ev.emit('mode', m); })
     .on('mouseenter', (event, m) => { if (cur && m !== cur.mode) preview(statsFor(cur.period, { ...cur, mode: m })); })
     .on('mouseleave', endPreview);
   function preview(Sp) { previewPath.attr('d', path(coastFor(Sp))).attr('opacity', 1); coastPath.attr('opacity', 0.25); }
   function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); }
 
-  // Budget: drag the handle (or anywhere on the bar or chart); click to jump; arrow keys on the handle.
+  // Budget: drag the handle (or anywhere on the bar); click to jump; arrow keys on the handle.
   // While dragging, the handle and the line follow the pointer exactly; the budget sent is rounded.
   let pending = null;
   function sendBudget(b, x) {
@@ -443,18 +505,16 @@ export function createViewB(container, data, theme, { width, height }) {
     if (pending == null) requestAnimationFrame(() => { const v = pending; pending = null; if (v != null) ev.emit('budget', v); });
     pending = b;
   }
-  const clampX = x => Math.max(cm.l, Math.min(CW - cm.r, x));
-  const atX = x => roundBudget(cx.invert(clampX(x)));
-  const drag = d3.drag().container(chart.node()).clickDistance(3)
+  const clampX = x => Math.max(lm.l, Math.min(CW - lm.r, x));
+  const atX = x => roundBudget(lx.invert(clampX(x)));
+  const drag = d3.drag().container(ladder.node()).clickDistance(3)
     .on('start', () => { knobHalo.interrupt().attr('fill-opacity', 0.16); knob.style('cursor', 'grabbing'); })
     .on('drag', e => { if (cur) { dragging = true; sendBudget(atX(e.x), clampX(e.x)); } })
     .on('end', () => {
       knob.style('cursor', 'grab'); knobHalo.transition().duration(250).attr('fill-opacity', 0);
       requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; if (cur) placeBudget(cur.budget, true); }));
     });
-  const jump = event => { if (cur) ev.emit('budget', atX(d3.pointer(event, chart.node())[0])); };
-  plotBg.call(drag).on('click', jump);
-  barHit.call(drag).on('click', jump);
+  barHit.call(drag).on('click', event => { if (cur) ev.emit('budget', atX(d3.pointer(event, ladder.node())[0])); });
   knob.call(drag).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
@@ -466,10 +526,10 @@ export function createViewB(container, data, theme, { width, height }) {
   function drawData(s, animate) {
     S = statsFor(s.period, s);
     Sthen = statsFor(s.thenPeriod, s);
-    C = comparable(Sthen, S);
     const same = s.thenPeriod === s.period;
+    C = same ? (() => { const set = [...S.keys()].filter(c => charted(S.get(c))); const k = set.filter(c => isLand(S.get(c))).length;
+      return { set, n: set.length, k1: k, k2: k, land1: k / set.length, land2: k / set.length }; })() : comparable(Sthen, S);
     flipped = same ? [] : C.set.filter(c => isLand(Sthen.get(c)) && isWater(S.get(c)));
-    const cameBack = same ? [] : C.set.filter(c => isWater(Sthen.get(c)) && isLand(S.get(c)));
 
     // Fills: exact colours. A deliberate change arrives as a tide; a drag follows the hand.
     const instant = !animate || reduceMotion;
@@ -478,7 +538,8 @@ export function createViewB(container, data, theme, { width, height }) {
     d3.selectAll(otherF).interrupt()
       .attr('fill', f => S.get(commOfF(f)) ? (surface ? '#e6eaef' : 'url(#vb-fog)') : noSales)
       .attr('pointer-events', f => S.get(commOfF(f)) ? 'all' : 'none')
-      .style('cursor', f => S.get(commOfF(f)) ? 'help' : null);
+      .style('cursor', f => S.get(commOfF(f)) ? 'help' : null)
+      .each(function () { this.__out = null; });
     const dataSel = d3.selectAll(dataF).interrupt().attr('pointer-events', 'all').style('cursor', 'pointer');
     const delayOf = f => {
       const c = commOfF(f), now = outOf(S.get(c)), before = lastOut.get(c);
@@ -489,7 +550,7 @@ export function createViewB(container, data, theme, { width, height }) {
     if (instant) dataSel.attr('fill', fillOf).each(function (f) { this.__out = outOf(S.get(commOfF(f))); });
     // The colour travels along the depth scale itself (deep → shallow → wet sand → dry), never through grey
     else dataSel.transition().delay(delayOf).duration(700).ease(d3.easeSinInOut).attrTween('fill', function (f) {
-      const el = this, to = outOf(S.get(commOfF(f))), from = el.__out;   // where this shape's colour is right now
+      const el = this, to = outOf(S.get(commOfF(f))), from = el.__out;
       if (from == null) return () => depthColor((el.__out = to));
       const i = d3.interpolateNumber(from, to);
       return t => depthColor((el.__out = i(t)));
@@ -507,38 +568,47 @@ export function createViewB(container, data, theme, { width, height }) {
       coastPath.attr('d', newCoast).attr('stroke-opacity', 0).transition().delay(350).duration(500).attr('stroke-opacity', 1);
     }
 
-    // Communities that went under since "then": outlined, always (the finding, not a hover)
+    // Neighbourhoods that went under since "then": outlined in orange, always
     gFlip.selectAll('path').data(flipped, c => c).join('path').attr('d', c => path(byComm.get(c)))
-      .attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.6).attr('stroke-linejoin', 'round');
-    keyFlip.html(same ? '' : `${swatch('transparent', theme.accent)}<strong>${flipped.length}</strong> went under since ${periodLabel(s.thenPeriod)}`);
-    budgetBig.text(aed(s.budget));
-    budgetSub.text(`for ${s.size} m² · up to AED ${fmt(s.budget / s.size)} per m²`);
+      .attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.8).attr('stroke-linejoin', 'round');
 
-    drawHeadline(s, same, cameBack, animate);
+    placeLabels(s, [...S.keys()].filter(c => byComm.has(c)));
+    drawHeadline(s, same, animate);
+    drawLegend(s, same);
 
     clearTimeout(heavyTimer);
     if (dragging) heavyTimer = setTimeout(() => drawHeavy(s, same), 120);
     else drawHeavy(s, same);
   }
 
-  function drawHeadline(s, same, cameBack, animate) {
-    const target = same ? [chartedShare(S)] : [C.land1, C.land2];
-    const from = readoutValues && readoutValues.length === target.length ? readoutValues : target;
-    readoutValues = target;
-    const b = `<strong>${aed(s.budget)}</strong> for ${s.size} m²`;
-    const render = v => same
-      ? `${b} reaches <strong>${pctFmt(v[0])}</strong> of communities with enough sales in ${periodLabel(s.period)}.`
-      : `${b} reached <strong>${pctFmt(v[0])}</strong> of these ${C.n} communities in ${periodLabel(s.thenPeriod)} ` +
-        `and <strong style="color:${theme.depth.deep}">${pctFmt(v[1])}</strong> in ${periodLabel(s.period)}.`;
-    headline.interrupt();
-    if (!animate || reduceMotion) headline.html(render(target));
-    else { const i = d3.interpolate(from, target); headline.transition().duration(650).tween('n', () => t => headline.html(render(i(t)))); }
-
-    // The same comparison for each kind of home, inside its button
+  function drawHeadline(s, same, animate) {
+    const b = `<strong>${aed(s.budget)}</strong>`;
+    const home = `a typical ${s.size} m² ${homeWord()}`;
+    let html;
+    if (same) html = `${b} buys ${home} in <strong>${C.k2}</strong> of ${C.n} neighbourhoods in ${periodLabel(s.period)}.`;
+    else {
+      const edges = C.set.map(c => S.get(c).edge).sort(d3.ascending);
+      const eq = C.k1 ? ceilBudget(edges[C.k1 - 1]) : NaN;
+      html = `${b} buys ${home} in <strong>${C.k1}</strong> of ${C.n} neighbourhoods in ${periodLabel(s.thenPeriod)}, ` +
+        `${C.k2 < C.k1 ? 'but only' : 'and'} <strong style="color:${theme.depth.deep}">${C.k2}</strong> in ${periodLabel(s.period)}.` +
+        (Number.isFinite(eq) && C.k2 !== C.k1
+          ? ` <span style="color:${theme.quiet}">To reach ${C.k1} again you would need</span> <strong>${aed(eq)}</strong>.` : '');
+    }
+    headline.html(html);
     modeNums.text(m => {
-      const c2 = m === s.mode ? C : comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
-      return same ? pctFmt(m === s.mode ? chartedShare(S) : c2.land2) : `${pctFmt(c2.land1)} → ${pctFmt(c2.land2)}`;
+      const c2 = m === s.mode && !same ? C : comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
+      return same ? `${c2.k2} of ${c2.n}` : `${c2.k1} → ${c2.k2} of ${c2.n}`;
     });
+    ladderTitle.text(`What a typical ${s.size} m² ${homeWord()} costs, by neighbourhood`);
+  }
+
+  function drawLegend(s, same) {
+    legText.html(`<strong>Sand</strong>: your budget buys a typical home there<br>` +
+      `<strong style="color:${theme.depth.deep}">Water</strong>: it doesn't; deeper = fewer homes within budget`);
+    legOther.html((same ? '' : `<span><span style="display:inline-block;width:12px;height:10px;border:2px solid ${theme.accent};border-radius:2px;vertical-align:-1px;margin-right:5px"></span>` +
+      `<strong>${flipped.length}</strong> went under since ${periodLabel(s.thenPeriod)}</span>`) +
+      `<span><span style="display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;background:${surface ? 'radial-gradient(circle at 35% 35%,#ffffff,#b9c3ce)' : `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`}"></span>` +
+      `Fog: under 20 sales, too few to trust</span>`);
   }
 
   let heavyTimer = null;
@@ -567,155 +637,127 @@ export function createViewB(container, data, theme, { width, height }) {
       })
       .on('click', (event, t) => ev.emit('thenPeriod', t.p));
 
-    drawCurve(s, same);
+    drawLadder(s, same);
   }
 
-  function drawCurve(s, same) {
-    // One line per period over the same communities (those comparable between "then" and now)
-    const set = C.set;
-    periodsInfo = PERIOD_KEYS.map(p => {
-      const Sp = p === s.period ? S : p === s.thenPeriod ? Sthen : statsFor(p, s);
-      const inP = set.filter(c => charted(Sp.get(c)));
-      const edges = inP.map(c => Sp.get(c).edge).sort(d3.ascending);
-      const n = edges.length;
-      const pts = [[BUDGET_MIN, d3.bisectRight(edges, BUDGET_MIN) / n]];
-      edges.forEach((e, i) => { if (e > BUDGET_MIN && e < BUDGET_MAX) pts.push([e, (i + 1) / n]); });
-      pts.push([BUDGET_MAX, d3.bisectRight(edges, BUDGET_MAX) / n]);
-      const share = n ? inP.filter(c => isLand(Sp.get(c))).length / n : NaN;
-      return { p, pts, edges, n, share, Sp };
-    }).filter(d => d.n > 0);
-    const role = p => p === s.period ? 'now' : (!same && p === s.thenPeriod) ? 'then' : 'other';
-    const strokeOf = d => ({ now: theme.depth.deep, then: thenColor, other: '#d3d9e0' })[role(d.p)];
-    const widthOf = d => ({ now: 2.6, then: 2, other: 1.1 })[role(d.p)];
-    const order = { other: 0, then: 1, now: 2 };
+  // One row per neighbourhood (those with 20+ sales in both periods), sorted by today's typical price.
+  // Hollow dot: then. Filled dot, in the neighbourhood's map colour: now. The budget line runs through
+  // all rows; every row whose filled dot sits left of it is sand on the map.
+  function drawLadder(s, same) {
+    rows = C.set.map(c => ({ c, now: S.get(c).edge, then: same ? null : Sthen.get(c).edge, flip: flipped.includes(c) }))
+      .sort((a, b) => a.now - b.now);
+    const n = rows.length;
+    const rh = (rowsB - lm.t) / Math.max(1, n);
+    const fs = Math.max(8, Math.min(11, rh * 0.82));
+    const yOf = i => lm.t + rh * (i + 0.5);
+    rows.forEach((r, i) => { r.y = yOf(i); });
+    const t = prev && !dragging && !reduceMotion ? d3.transition().duration(500).ease(d3.easeCubicInOut) : null;
 
-    // The ground lost between then and now, shaded
-    const nowI = periodsInfo.find(d => d.p === s.period), thenI = same ? null : periodsInfo.find(d => d.p === s.thenPeriod);
-    if (nowI && thenI) {
-      const at = (d, b) => d3.bisectRight(d.edges, b) / d.n;
-      const xs = [...new Set([BUDGET_MIN, ...nowI.edges, ...thenI.edges, BUDGET_MAX])]
-        .filter(b => b >= BUDGET_MIN && b <= BUDGET_MAX).sort(d3.ascending);
-      band.attr('d', stepArea(xs.map(b => [b, at(nowI, b), Math.max(at(nowI, b), at(thenI, b))]))).attr('opacity', 1);
-    } else band.attr('opacity', 0);
-
-    const lines = gLines.selectAll('g').data(periodsInfo.slice().sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
-      .join(enter => {
-        const g = enter.append('g').style('cursor', 'pointer');
-        g.append('path').attr('class', 'ln').attr('fill', 'none').attr('stroke-linejoin', 'round');
-        g.append('path').attr('class', 'hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 10);
-        return g;
-      }).order();
-    lines.select('.ln').interrupt().attr('stroke', strokeOf).attr('stroke-width', widthOf).attr('d', d => step(d.pts));
-    lines.select('.hit').attr('d', d => step(d.pts))
-      .on('mouseenter', (event, d) => {
-        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', widthOf(d) + 1).attr('stroke', role(d.p) === 'other' ? '#9aa3ad' : strokeOf(d));
-        if (d.p !== s.period) preview(d.Sp);
-      })
-      .on('mousemove', (event, d) => showTip(event, `<strong>${periodLabel(d.p)}</strong>: ${pctFmt(d.share)} within reach at your budget<br>` +
-        `<span style="color:${theme.quiet}">${d.p === s.period ? 'The period on the map.' : 'Its coastline is dashed on the map. Click to show this period.'}</span>`))
-      .on('mouseleave', (event, d) => {
-        hideTip(); endPreview();
-        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', widthOf(d)).attr('stroke', strokeOf(d));
-      })
-      .on('click', (event, d) => { event.stopPropagation(); hideTip(); endPreview(); if (d.p !== s.period) ev.emit('period', d.p); });
-
-    const item = (c, w, label, opts = {}) => `<span style="display:inline-flex;align-items:center;gap:5px">` +
-      `<span style="display:inline-block;width:16px;height:${w}px;border-radius:${w}px;background:${c};opacity:${opts.op || 1}"></span>` +
-      `<span style="color:${opts.ink ? theme.ink : theme.quiet};font-weight:${opts.ink ? 600 : 400}">${label}</span></span>`;
-    chartLegend.html([item(theme.depth.deep, 3, periodLabel(s.period), { ink: true }),
-      same ? '' : item(thenColor, 2, periodLabel(s.thenPeriod)),
-      item('#c3cad3', 1.5, 'other periods'),
-      same ? '' : item(theme.depth.shallow, 8, 'reach lost', { op: 0.3 }),
-      `<span>· ${set.length} communities</span>`].join(''));
-    placeBudget(s.budget, !dragging && !!prev);
-    drawPick(cur);
+    const g = gRows.selectAll('g.row').data(rows, d => d.c).join(enter => {
+      const e = enter.append('g').attr('class', 'row').attr('transform', d => `translate(0,${d.y})`).style('cursor', 'pointer');
+      e.append('rect').attr('class', 'bg').attr('x', 0).attr('width', CW).attr('fill', 'transparent').attr('rx', 3);
+      e.append('text').attr('class', 'nm').attr('x', lm.l - 8).attr('dy', '0.35em').attr('text-anchor', 'end');
+      e.append('line').attr('class', 'lk').attr('stroke-linecap', 'round');
+      e.append('g').attr('class', 'trail');
+      e.append('circle').attr('class', 'th').attr('fill', '#ffffff').attr('stroke', thenColor).attr('stroke-width', 1.4);
+      e.append('circle').attr('class', 'nw').attr('stroke', '#ffffff').attr('stroke-width', 1);
+      e.append('text').attr('class', 'vals').attr('dy', '0.35em').style('font', `600 10px ${theme.font}`)
+        .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
+      return e;
+    }, update => update, exit => exit.remove());
+    (t ? g.transition(t) : g).attr('transform', d => `translate(0,${d.y})`);
+    g.select('.bg').attr('y', -rh / 2).attr('height', rh);
+    // names fit their column: shortened with an ellipsis when needed (the full name is in the tooltip)
+    const fitName = t0 => { let t = t0; while (t.length > 4 && textW(t, fs, 400) > lm.l - 12) t = t.slice(0, -2); return t === t0 ? t : `${t.trimEnd()}…`; };
+    g.select('.nm').style('font-size', `${fs}px`).text(d => fitName(shortName(nameOf(d.c))));
+    g.select('.lk').attr('x1', d => d.then == null ? lx(d.now) : lx(d.then)).attr('x2', d => lx(d.now))
+      .attr('stroke', d => d.flip ? theme.accent : '#b9c2cc').attr('stroke-width', d => d.flip ? 2 : 1.3);
+    g.select('.th').attr('cx', d => d.then == null ? -99 : lx(d.then)).attr('r', Math.min(3.4, rh * 0.32))
+      .attr('opacity', d => d.then == null ? 0 : 1);
+    g.select('.nw').attr('cx', d => lx(d.now)).attr('r', Math.min(4.6, rh * 0.42));
+    g.on('mouseenter', (event, d) => { if (cur.hovered !== d.c) ev.emit('hover', d.c); })
+      .on('mousemove', (event, d) => showTip(event, tipForCommunity(d.c)))
+      .on('mouseleave', () => { hideTip(); if (cur.hovered) ev.emit('hover', null); })
+      .on('click', (event, d) => { if (event.shiftKey) ev.emit('pin', d.c); else ev.emit('select', cur.selected === d.c ? null : d.c); });
+    placeBudget(s.budget, !!t);
+    styleRows(cur);
   }
 
-  // The budget line, the handle, the two dots (then, now) and the arrow to the budget that reaches as far now
+  // Budget line, handle, the divider between "within reach" and "out of reach", and the "reach again" mark
   function placeBudget(b, animate, xOverride) {
     if (!cur || !C) return;
-    const x = xOverride ?? cx(b);
+    const x = xOverride ?? lx(b);
     const t = animate && !reduceMotion ? d3.transition().duration(450).ease(d3.easeCubicOut) : null;
     const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
     go(budgetLine).attr('x1', x).attr('x2', x);
-    go(barFill).attr('width', Math.max(0, x - cm.l));
+    go(barFill).attr('width', Math.max(0, x - lm.l));
     go(knob).attr('transform', `translate(${x},${barY})`);
     const label = aed(b);
-    if (dragging || xOverride != null) { budgetBig.text(aed(b)); budgetSub.text(`for ${cur.size} m² · up to AED ${fmt(b / cur.size)} per m²`); }
     const w = label.length * 6.6 + 22;
     bubbleText.text(label);
     bubbleRect.attr('x', -w / 2).attr('width', w);
-    tickLabels.attr('opacity', v => Math.abs(cx(v) - x) < w / 2 + 14 ? 0 : 1);
-    knob.attr('aria-valuenow', b).attr('aria-valuetext', aed(b));
+    tickLabels.attr('opacity', v => Math.abs(lx(v) - x) < w / 2 + 14 ? 0 : 1);
+    knob.attr('aria-valuenow', b).attr('aria-valuetext', label);
 
-    const same = cur.thenPeriod === cur.period;
-    const shareAt = d => d ? d3.bisectRight(d.edges, b) / d.n : NaN;
-    const now = periodsInfo.find(d => d.p === cur.period), then = same ? null : periodsInfo.find(d => d.p === cur.thenPeriod);
-    const dots = [now && { k: 'now', v: shareAt(now), c: theme.depth.deep, p: cur.period },
-      then && { k: 'then', v: shareAt(then), c: thenColor, p: cur.thenPeriod }].filter(Boolean);
-    const leftSide = x > cm.l + 105;     // labels sit left of the line, clear of the arrow
-    const ys = dots.map(d => cy(d.v));
-    if (ys.length === 2 && Math.abs(ys[0] - ys[1]) < 15) {   // keep the two labels apart
-      const mid = (ys[0] + ys[1]) / 2, up = ys[1] <= ys[0] ? 1 : 0;
-      ys[up] = mid - 8; ys[1 - up] = mid + 8;
-    }
-    gDots.selectAll('g').data(dots, d => d.k).join(enter => {
-      const g = enter.append('g');
-      g.append('circle').attr('r', 4.5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-      g.append('text').attr('dy', '0.35em').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-        .style('font', `600 ${theme.size.small}px ${theme.font}`);
-      return g;
-    }).each(function (d, i) {
-      const g = d3.select(this);
-      go(g.select('circle')).attr('cx', x).attr('cy', cy(d.v)).attr('fill', d.c);
-      go(g.select('text')).attr('x', leftSide ? x - 10 : x + 10).attr('y', ys[i]);
-      g.select('text').attr('text-anchor', leftSide ? 'end' : 'start').attr('fill', d.c)
-        .text(`${pctFmt(d.v)} in ${periodLabel(d.p)}`);
-    });
+    // Now-dots take the colour each neighbourhood has on the map at this budget
+    const st = { ...cur, budget: b };
+    const Snow = dragging ? statsFor(cur.period, st) : S;
+    gRows.selectAll('g.row').select('.nw').attr('fill', d => depthColor(outOf(Snow.get(d.c))));
+    const k = rows.filter(r => isLand(Snow.get(r.c))).length, n = rows.length;
+    const rh = (rowsB - lm.t) / Math.max(1, n), yDiv = lm.t + rh * k;
+    go(divider).attr('transform', `translate(0,${yDiv})`);
+    divider.select('line').attr('opacity', k > 0 && k < n ? 1 : 0);
+    divUp.attr('y', -4).text(k ? `↑ ${k} within reach` : '');
+    divDown.attr('y', 12).text(n - k ? `↓ ${n - k} out of reach` : '');
 
-    // The arrow: from "then" at your budget, across to where "now" reaches as far
-    gEq.selectAll('*').remove();
-    if (then && now) {
-      const target = shareAt(then), k = Math.ceil(target * now.n - 1e-9);
-      if (k >= 1 && k <= now.n && Math.abs(shareAt(now) - target) > 1e-9) {
-        const eq = ceilBudget(now.edges[k - 1]), x2 = cx(eq), y2 = cy(target);
-        if (Math.abs(x2 - x) > 24) {
-          const more = eq > b;
-          gEq.append('line').attr('x1', x + (more ? 6 : -6)).attr('x2', x2 + (more ? -5 : 5)).attr('y1', y2).attr('y2', y2)
-            .attr('stroke', theme.depth.deep).attr('stroke-width', 1.4).attr('marker-end', 'url(#vb-arrow)')
-            .attr('pointer-events', 'none');
-          const lab = gEq.append('g').style('cursor', 'pointer').on('click', () => ev.emit('budget', eq));
-          lab.append('title').text(`Set your budget to ${aed(eq)}`);
-          // label starts beside the budget line on the arrow's side, so it never covers the dot labels
-          const fitsRight = more && x + 8 + 150 < CW - cm.r;
-          lab.append('text').attr('x', more ? (fitsRight ? x + 8 : x2) : x - 8).attr('y', y2 - 8)
-            .attr('text-anchor', more ? (fitsRight ? 'start' : 'end') : 'end')
-            .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-            .style('font', `600 ${theme.size.small}px ${theme.font}`)
-            .text(`${more ? '+' : '−'}${aed(Math.abs(eq - b))} → ${aed(eq)}`);
-        }
-      }
+    // A small mark on the bar: the budget that reaches as many neighbourhoods now as yours did then
+    eqMark.selectAll('*').remove();
+    if (cur.thenPeriod !== cur.period && C.k1 && C.k1 !== C.k2) {
+      const edges = rows.map(r => r.now).sort(d3.ascending);
+      const eq = ceilBudget(edges[C.k1 - 1]);
+      const ex = lx(eq);
+      eqMark.on('click', () => ev.emit('budget', eq)).append('title').text(`Set your budget to ${aed(eq)}`);
+      eqMark.append('path').attr('d', `M${ex},${barY - 7}l-5,-8h10z`).attr('fill', '#ffffff').attr('stroke', theme.depth.deep).attr('stroke-width', 1.5);
+      if (Math.abs(ex - x) > 40) eqMark.append('text').attr('x', ex).attr('y', barY - 19).attr('text-anchor', 'middle')
+        .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
+        .style('font', `600 10px ${theme.font}`).text(`${short$(eq)}: as many as ${periodLabel(cur.thenPeriod)}`);
     }
   }
 
-  // The selected (and hovered) community on the chart: the step where it comes within reach, then and now
-  function drawPick(s) {
+  // Selected and hovered rows: highlighted; the selected one also shows its prices and all four periods
+  function styleRows(s) {
     if (!s) return;
-    const picks = [];
-    [[s.selected, 'sel'], [s.hovered !== s.selected ? s.hovered : null, 'hov']].forEach(([c, kind]) => {
-      if (!c) return;
-      periodsInfo.filter(d => d.p === s.period || (d.p === s.thenPeriod && s.thenPeriod !== s.period)).forEach(d => {
-        const st = d.Sp.get(c);
-        if (!charted(st) || !C.set.includes(c) || st.edge < BUDGET_MIN || st.edge > BUDGET_MAX) return;
-        picks.push({ c, kind, now: d.p === s.period, x: cx(st.edge), y: cy(d3.bisectRight(d.edges, st.edge) / d.n) });
+    const n = rows.length, rh = (rowsB - lm.t) / Math.max(1, n);
+    const g = gRows.selectAll('g.row');
+    g.select('.bg').attr('fill', d => d.c === s.selected ? '#fff4e8' : d.c === s.hovered ? '#f1f4f8' : 'transparent');
+    g.select('.nm').attr('fill', d => d.c === s.selected ? theme.ink : d.flip ? theme.ink : '#4a5866')
+      .style('font-weight', d => d.c === s.selected || d.c === s.hovered ? 700 : 400);
+    g.select('.vals').text(d => {
+      if (d.c !== s.selected) return '';
+      return d.then == null ? short$(d.now) : `${short$(d.then)} → ${short$(d.now)} (${d3.format('+.0%')(d.now / d.then - 1)})`;
+    }).attr('x', d => {
+      const right = Math.max(lx(d.now), d.then == null ? 0 : lx(d.then));
+      return right + 8 + 120 < CW ? right + 8 : Math.min(lx(d.now), d.then == null ? 1e9 : lx(d.then)) - 8;
+    }).attr('text-anchor', d => {
+      const right = Math.max(lx(d.now), d.then == null ? 0 : lx(d.then));
+      return right + 8 + 120 < CW ? 'start' : 'end';
+    }).attr('fill', theme.ink);
+    // the selected neighbourhood's four periods, as a faint trail with small year marks
+    g.select('.trail').each(function (d) {
+      const tr = d3.select(this);
+      tr.selectAll('*').remove();
+      if (d.c !== s.selected) return;
+      const pts = PERIOD_KEYS.map(p => ({ p, st: statsFor(p, s).get(d.c) })).filter(q => charted(q.st));
+      tr.append('path').attr('d', d3.line()(pts.map(q => [lx(q.st.edge), 0]))).attr('stroke', theme.quiet)
+        .attr('stroke-opacity', 0.5).attr('fill', 'none');
+      pts.forEach(q => {
+        tr.append('circle').attr('cx', lx(q.st.edge)).attr('r', 1.8).attr('fill', theme.quiet);
+        tr.append('text').attr('x', lx(q.st.edge)).attr('y', -rh / 2 + 1).attr('text-anchor', 'middle')
+          .attr('fill', theme.quiet).style('font-size', '8.5px').text(`'${q.p.slice(2, 4)}`);
       });
     });
-    gPick.selectAll('circle').data(picks, d => d.kind + d.c + d.now).join('circle')
-      .attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.kind === 'sel' ? 5.5 : 4.5).attr('fill', '#ffffff')
-      .attr('stroke', d => d.now ? theme.depth.deep : thenColor).attr('stroke-width', d => d.kind === 'sel' ? 2.4 : 1.6);
-    gPick.selectAll('text').data(picks.filter(d => d.now), d => d.kind + d.c).join('text')
-      .attr('x', d => d.x + 8).attr('y', d => d.y + 13).attr('fill', theme.ink).attr('paint-order', 'stroke')
-      .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `600 10.5px ${theme.font}`).text(d => nameOf(d.c));
+    // labels on the map: the selected one in bold
+    gLabels.selectAll('g.lab text').style('font-weight', d => d.c === s.selected ? 800 : 600);
   }
 
   function drawMarks(s) {
@@ -735,13 +777,9 @@ export function createViewB(container, data, theme, { width, height }) {
     if (s.selected) marks.push({ c: s.selected, kind: 'selected' });
     gMarks.selectAll('path').data(marks.filter(m => byComm.has(m.c)), m => m.kind + m.c).join('path')
       .attr('d', m => path(byComm.get(m.c))).attr('fill', 'none').attr('stroke', theme.ink)
-      .attr('stroke-width', m => m.kind === 'selected' ? 2.8 : m.kind === 'hovered' ? 1.8 : 1.6)
+      .attr('stroke-width', m => m.kind === 'selected' ? 3 : m.kind === 'hovered' ? 2 : 1.6)
       .attr('stroke-dasharray', m => m.kind === 'pinned' ? '4 3' : null);
-    gMarks.selectAll('text').data(marks.filter(m => m.kind === 'pinned' && byComm.has(m.c)), m => m.c).join('text')
-      .attr('x', m => path.centroid(byComm.get(m.c))[0]).attr('y', m => path.centroid(byComm.get(m.c))[1])
-      .attr('text-anchor', 'middle').attr('dy', '0.35em').attr('fill', theme.ink).attr('paint-order', 'stroke')
-      .attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `700 ${theme.size.small}px ${theme.font}`)
-      .text(m => m.i + 1);
+    styleRows(s);
   }
 
   // ---------- the moving water and fog ----------
@@ -785,14 +823,12 @@ export function createViewB(container, data, theme, { width, height }) {
       const pinsChanged = !prev || (prev.pinned || []).join() !== (s.pinned || []).join();
       if (dataChanged || prev.selected !== s.selected || prev.hovered !== s.hovered || pinsChanged ||
           prev.highlight !== s.highlight) drawMarks(s);
-      if (!dataChanged && (prev.selected !== s.selected || prev.hovered !== s.hovered || prev.thenPeriod !== s.thenPeriod)) drawPick(s);
       prev = s;
     },
     on: ev.on,
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
-    _debug: s => ({ comparable: comparable(statsFor(s.thenPeriod, s), statsFor(s.period, s)),
-      charted: chartedShare(statsFor(s.period, s)) })
+    _debug: s => ({ comparable: comparable(statsFor(s.thenPeriod, s), statsFor(s.period, s)) })
   };
 }
