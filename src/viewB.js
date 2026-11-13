@@ -4,8 +4,9 @@
 // Emits: select, pin, hover, mode, thenPeriod, period, budget.
 //
 // Design rules for this view:
-//   * What matters is on screen without hovering: the headline, the annotation under it, the
-//     communities that went under since "then" (outlined), and the land curve with its numbers.
+//   * What matters is on screen without hovering, in as few words as possible: one headline,
+//     the then → now numbers inside the mode buttons, the communities that went under (outlined,
+//     counted in the key), and the reach chart with its two numbers and one arrow.
 //     Hover and click only add detail (overview first, details on demand).
 //   * Every colour is exact: one fill per community from its own sales. The coastline runs along
 //     real community borders, never interpolated. The moving light on the water never changes colour.
@@ -15,14 +16,14 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSeaLight } from './seashader.js';
 
-export const BUILD = 'View B · land curve + honest map · 2026-11-13';
+export const BUILD = 'View B · budget bar + reach chart · 2026-11-13';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
 const fmt = d3.format(',.0f');
 const pctFmt = d3.format('.0%');
 const aed = v => v >= 1e6 ? `AED ${d3.format('.2~f')(v / 1e6)}M` : `AED ${d3.format(',.0f')(v / 1e3)}k`;
-const MODE_LABEL = { all: 'All homes', offplan: 'Off-plan only', ready: 'Ready only' };
+const MODE_LABEL = { all: 'All homes', ready: 'Ready', offplan: 'Off-plan' };
 const BUDGET_MIN = 400000, BUDGET_MAX = 4000000;
 const DOWNTOWN = '345';                       // Burj Khalifa community: the reference for "distance from the centre"
 const LANDMARKS = ['345', '392', '381', '681', '521'];   // orientation labels only
@@ -90,7 +91,11 @@ export function createViewB(container, data, theme, { width, height }) {
     priceCache.set(key, m);
     return m;
   }
+  const statsCache = new Map();
   function statsFor(period, s) {           // Map comm -> { n, p50, shareWithin, edge }
+    const key = [period, s.mode, s.homeType, s.money, s.dropExtremes, s.budget, s.size].join('|');
+    if (statsCache.has(key)) return statsCache.get(key);
+    if (statsCache.size > 400) statsCache.clear();
     const thr = s.budget / s.size;
     const out = new Map();
     for (const [comm, a] of pricesBy(period, s)) {
@@ -102,6 +107,7 @@ export function createViewB(container, data, theme, { width, height }) {
         edge: a[Math.ceil(a.length * 0.5) - 1] * s.size
       });
     }
+    statsCache.set(key, out);
     return out;
   }
   const charted = st => !!st && st.n >= R.MIN_SALES;
@@ -156,24 +162,26 @@ export function createViewB(container, data, theme, { width, height }) {
   const lineGrey = '#c3cad3';
 
   // ---------- layout ----------
-  const gap = 10, toolbarH = 40, headH = 60, keyH = 30, chartH = 170;
+  const gap = 10, toolbarH = 38, headH = 26, keyH = 30, chartH = 228;
   const mapH = Math.max(300, height - toolbarH - headH - keyH - chartH - gap * 4);
 
-  const toolbar = root.append('div').style('height', `${toolbarH}px`).style('display', 'flex')
-    .style('align-items', 'center').style('gap', '18px').style('flex-wrap', 'wrap');
+  // Which homes: a segmented control; each option carries its own then → now numbers, so the
+  // comparison between ready and off-plan homes is visible without clicking anything
+  const toolbar = root.append('div').style('height', `${toolbarH}px`).style('display', 'flex').style('align-items', 'center');
   const modeGroup = toolbar.append('div').attr('role', 'group').attr('aria-label', 'Which homes')
-    .style('display', 'flex').style('gap', '6px');
-  const modeButtons = modeGroup.selectAll('button').data(['all', 'offplan', 'ready']).join('button')
-    .attr('type', 'button').text(d => MODE_LABEL[d])
-    .style('font', `600 ${theme.size.small}px ${theme.font}`).style('padding', '6px 12px')
-    .style('border-radius', '8px').style('cursor', 'pointer');
-  const budgetText = toolbar.append('div').style('font-size', `${theme.size.small}px`).style('color', theme.quiet);
+    .style('display', 'inline-flex').style('padding', '3px').style('gap', '2px')
+    .style('background', '#eef1f5').style('border-radius', '10px');
+  const modeButtons = modeGroup.selectAll('button').data(['all', 'ready', 'offplan']).join('button')
+    .attr('type', 'button').style('font', `600 ${theme.size.small}px ${theme.font}`).style('padding', '6px 12px')
+    .style('border', '0').style('border-radius', '8px').style('cursor', 'pointer')
+    .style('transition', 'background-color .2s, color .2s, box-shadow .2s');
+  modeButtons.append('span').text(d => MODE_LABEL[d]);
+  const modeNums = modeButtons.append('span').style('font-weight', 400).style('margin-left', '7px')
+    .style('font-variant-numeric', 'tabular-nums');
 
-  // Headline + one annotation line: the finding, always visible
-  const head = root.append('div').style('min-height', `${headH}px`).style('margin-top', `${gap}px`);
-  const headline = head.append('div').style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.4');
-  const annotation = head.append('div').style('font-size', `${theme.size.small}px`).style('color', theme.quiet)
-    .style('line-height', '1.45').style('margin-top', '3px');
+  // One sentence: the finding
+  const headline = root.append('div').style('min-height', `${headH}px`).style('margin-top', `${gap}px`)
+    .style('font-size', `${theme.size.label + 2}px`).style('line-height', '1.35');
 
   // Key, one row
   const fogBg = `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`;
@@ -262,46 +270,77 @@ export function createViewB(container, data, theme, { width, height }) {
   const inlandScale = d3.scaleLinear().domain(d3.extent([...inlandRaw.values()].filter(Number.isFinite))).clamp(true);
   const inland = c => inlandScale(inlandRaw.get(c) ?? 0);
 
-  // ---------- land curve ----------
-  // How far does a budget reach? x = budget (log), y = share of the comparable communities on land.
-  // Each step of a line is one community crossing to land. Position, not colour, carries the comparison.
+  // ---------- reach chart + budget bar ----------
+  // Top: how much of the city a budget reaches (x = budget, log; y = share of the comparable
+  // communities within reach; every step is one community). "Then" and "now" are the two lines that
+  // matter; the gap between them is shaded; one arrow shows the extra money that reaches as far now.
+  // Bottom: the budget bar, on the same x scale. The budget line runs from the chart down into its handle.
   const chart = root.append('svg').attr('width', width).attr('height', chartH)
     .style('display', 'block').style('margin-top', `${gap}px`).style('overflow', 'visible');
-  const cm = { l: 46, r: 18, t: 26, b: 26 };
+  const cm = { l: 46, r: 22, t: 26 };
+  const plotB = chartH - 78, barY = plotB + 30;
   const cx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([cm.l, width - cm.r]).clamp(true);
-  const cy = d3.scaleLinear().domain([0, 1]).range([chartH - cm.b, cm.t]);
-  const chartTitle = chart.append('text').attr('x', 0).attr('y', 12).attr('fill', theme.ink)
+  const cy = d3.scaleLinear().domain([0, 1]).range([plotB, cm.t]);
+  const cdefs = chart.append('defs');
+  cdefs.append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
+    .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
+  cdefs.append('marker').attr('id', 'vb-arrow').attr('viewBox', '0 0 10 10').attr('refX', 9).attr('refY', 5)
+    .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto-start-reverse')
+    .append('path').attr('d', 'M0,1L9,5L0,9z').attr('fill', theme.depth.deep);
+  const thenColor = '#8a95a3';
+
+  const chartTitle = chart.append('text').attr('x', 0).attr('y', 11).attr('fill', theme.ink)
     .style('font', `600 ${theme.size.small}px ${theme.font}`);
-  const chartLegend = chart.append('text').attr('x', width).attr('y', 12).attr('text-anchor', 'end')
-    .attr('fill', theme.quiet).style('font-size', `${theme.size.small}px`);
-  const gGrid = chart.append('g');
+  const chartLegend = chart.append('g');
+  const gGrid = chart.append('g').attr('pointer-events', 'none');
   [0, 0.5, 1].forEach(v => {
     gGrid.append('line').attr('x1', cm.l).attr('x2', width - cm.r).attr('y1', cy(v)).attr('y2', cy(v))
-      .attr('stroke', v === 0.5 ? '#d5dbe2' : theme.grid);
-    gGrid.append('text').attr('x', cm.l - 6).attr('y', cy(v)).attr('dy', '0.35em').attr('text-anchor', 'end')
+      .attr('stroke', theme.grid).attr('stroke-dasharray', v === 0.5 ? '3 3' : null);
+    gGrid.append('text').attr('x', cm.l - 8).attr('y', cy(v)).attr('dy', '0.35em').attr('text-anchor', 'end')
       .attr('fill', theme.quiet).style('font-size', '10.5px').text(pctFmt(v));
   });
-  const xTicks = gGrid.append('g');
-  [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6].forEach(v =>
-    xTicks.append('text').datum(v).attr('x', cx(v)).attr('y', chartH - 6).attr('text-anchor', 'middle')
-      .attr('fill', theme.quiet).style('font-size', '10.5px').text(aed(v).replace('AED ', '')));
   const plotBg = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', width - cm.l - cm.r)
-    .attr('height', chartH - cm.t - cm.b).attr('fill', 'transparent').style('cursor', 'ew-resize');
+    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
+  const band = chart.append('path').attr('fill', theme.depth.shallow).attr('fill-opacity', 0.16).attr('pointer-events', 'none');
   const gLines = chart.append('g');
-  const budgetLine = chart.append('line').attr('y1', cm.t - 4).attr('y2', chartH - cm.b + 2)
-    .attr('stroke', theme.ink).attr('stroke-width', 1.4).attr('pointer-events', 'none');
+  const budgetLine = chart.append('line').attr('y1', cm.t - 2).attr('y2', barY)
+    .attr('stroke', theme.ink).attr('stroke-opacity', 0.55).attr('stroke-width', 1).attr('pointer-events', 'none');
   const gEq = chart.append('g');
   const gDots = chart.append('g').attr('pointer-events', 'none');
-  const gEdges = chart.append('g').attr('pointer-events', 'none');   // the selected community's edge, then and now
-  const handle = chart.append('g').attr('tabindex', 0).attr('role', 'slider')
-    .attr('aria-label', 'Your budget. Left and right arrows change it.')
-    .attr('aria-valuemin', BUDGET_MIN).attr('aria-valuemax', BUDGET_MAX).style('cursor', 'ew-resize').style('outline', 'none');
-  const handleRect = handle.append('rect').attr('y', chartH - cm.b + 1).attr('height', 20).attr('rx', 10).attr('fill', theme.ink);
-  const handleText = handle.append('text').attr('y', chartH - cm.b + 11).attr('dy', '0.35em').attr('text-anchor', 'middle')
-    .attr('fill', '#ffffff').style('font', `600 10.5px ${theme.font}`);
-  const step = d3.line().curve(d3.curveStepAfter).x(d => cx(d[0])).y(d => cy(d[1]));
+  const gPick = chart.append('g').attr('pointer-events', 'none');   // the selected / hovered community on the lines
 
-  // ---------- tooltip and card ----------
+  // Budget bar: a thin track, the part your budget covers filled, a round handle with a soft shadow
+  const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
+  const barHit = chart.append('rect').attr('x', cm.l - 10).attr('y', barY - 16).attr('width', width - cm.l - cm.r + 20)
+    .attr('height', 32).attr('fill', 'transparent').style('cursor', 'pointer');
+  chart.append('rect').attr('x', cm.l).attr('y', barY - 3).attr('width', width - cm.l - cm.r).attr('height', 6).attr('rx', 3)
+    .attr('fill', '#e3e8ee').attr('pointer-events', 'none');
+  const barFill = chart.append('rect').attr('x', cm.l).attr('y', barY - 3).attr('height', 6).attr('rx', 3)
+    .attr('fill', theme.depth.deep).attr('pointer-events', 'none');
+  chart.append('g').attr('pointer-events', 'none').selectAll('circle').data(tickVals).join('circle')
+    .attr('cx', v => cx(v)).attr('cy', barY).attr('r', 1.4).attr('fill', '#ffffff').attr('fill-opacity', 0.9);
+  const tickLabels = chart.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
+    .attr('x', v => cx(v)).attr('y', barY + 25).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').text(v => aed(v).replace('AED ', ''));
+  chart.append('text').attr('x', cm.l - 8).attr('y', barY).attr('dy', '0.35em').attr('text-anchor', 'end')
+    .attr('fill', theme.ink).style('font', `600 10.5px ${theme.font}`).text('Budget');
+  const knob = chart.append('g').attr('tabindex', 0).attr('role', 'slider')
+    .attr('aria-label', 'Your budget. Arrow keys change it.')
+    .attr('aria-valuemin', BUDGET_MIN).attr('aria-valuemax', BUDGET_MAX).style('cursor', 'grab').style('outline', 'none');
+  const knobHalo = knob.append('circle').attr('r', 15).attr('fill', theme.depth.deep).attr('fill-opacity', 0);
+  const knobDot = knob.append('circle').attr('r', 9).attr('fill', '#ffffff').attr('stroke', theme.depth.deep)
+    .attr('stroke-width', 2.5).attr('filter', 'url(#vb-knob-shadow)');
+  const bubble = knob.append('g').attr('transform', 'translate(0,25)');
+  const bubbleRect = bubble.append('rect').attr('y', -11).attr('height', 22).attr('rx', 11).attr('fill', theme.ink);
+  const bubbleText = bubble.append('text').attr('dy', '0.35em').attr('text-anchor', 'middle').attr('fill', '#ffffff')
+    .style('font', `600 11px ${theme.font}`).style('font-variant-numeric', 'tabular-nums');
+  knob.on('mouseenter', () => knobHalo.transition().duration(150).attr('fill-opacity', 0.12))
+    .on('mouseleave', () => { if (!dragging) knobHalo.transition().duration(200).attr('fill-opacity', 0); })
+    .on('focus', () => knobHalo.attr('fill-opacity', 0.18)).on('blur', () => knobHalo.attr('fill-opacity', 0));
+  const step = d3.line().curve(d3.curveStepAfter).x(d => cx(d[0])).y(d => cy(d[1]));
+  const stepArea = d3.area().curve(d3.curveStepAfter).x(d => cx(d[0])).y0(d => cy(d[1])).y1(d => cy(d[2]));
+
+  // ---------- tooltip ----------
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
     .style('background', '#ffffff').style('border', `1px solid ${theme.grid}`).style('border-radius', '8px')
     .style('padding', '7px 10px').style('font-size', `${theme.size.small}px`).style('line-height', '1.45')
@@ -312,25 +351,31 @@ export function createViewB(container, data, theme, { width, height }) {
   }
   const hideTip = () => tip.style('opacity', 0);
 
-  const mapTop = () => svg.node().getBoundingClientRect().top - container.getBoundingClientRect().top;
-  const card = root.append('div').style('position', 'absolute').style('right', '12px').style('width', '280px')
-    .style('background', 'rgba(255,255,255,0.97)').style('border', `1px solid ${theme.grid}`).style('border-radius', '10px')
-    .style('box-shadow', '0 4px 16px rgba(15,30,50,0.12)').style('padding', '12px 14px')
-    .style('font-size', `${theme.size.small}px`).style('line-height', '1.5').style('display', 'none').style('z-index', 2);
-
   // ---------- state ----------
   let prev = null, cur = null, S = new Map(), Sthen = new Map(), C = null, dragging = false;
   let readoutValues = null, flipped = [], periodsInfo = [];
   const lastOut = new Map();
 
   // ---------- interactions ----------
+  function statusOf(c, s) {
+    const seq = PERIOD_KEYS.map(p => { const x = statsFor(p, s).get(c); return { p, k: !charted(x) ? 'none' : isLand(x) ? 'land' : 'water' }; })
+      .filter(d => d.k !== 'none');
+    if (!seq.length) return '';
+    if (seq.every(d => d.k === 'water')) return 'Out of reach in every period';
+    if (seq.every(d => d.k === 'land')) return 'Within reach in every period';
+    const i = seq.findIndex((d, j) => d.k === 'water' && seq.slice(0, j).some(e => e.k === 'land'));
+    return i >= 0 ? `Went under in ${periodLabel(seq[i].p)}` : `Came back within reach in ${periodLabel(seq.find(d => d.k === 'land').p)}`;
+  }
   function tipForCommunity(c) {
-    const st = S.get(c);
-    const other = alsoKnownAs(c) ? `<br><span style="color:${theme.quiet}">${alsoKnownAs(c)}</span>` : '';
-    const head = `<strong>${nameOf(c)}</strong>${other}<br>`;
+    const st = S.get(c), stThen = Sthen.get(c);
+    const aka = alsoKnownAs(c) ? ` <span style="color:${theme.quiet}">· ${alsoKnownAs(c)}</span>` : '';
+    const head = `<strong>${nameOf(c)}</strong>${aka}<br>`;
     if (!charted(st)) return `${head}Only ${st ? st.n : 0} sale${st && st.n === 1 ? '' : 's'} in ${periodLabel(cur.period)}: too few to trust (20 needed).`;
-    return `${head}<strong>${pctFmt(st.shareWithin)}</strong> of homes within your budget · ${fmt(st.n)} sales<br>` +
-      `<span style="color:${theme.quiet}">Click for details</span>`;
+    const same = cur.thenPeriod === cur.period;
+    const half = `Half the homes here from <strong>${aed(st.edge)}</strong>` +
+      (!same && charted(stThen) ? ` <span style="color:${theme.quiet}">(${aed(stThen.edge)} in ${periodLabel(cur.thenPeriod)})</span>` : '');
+    return `${head}<strong>${pctFmt(st.shareWithin)}</strong> of homes within your budget · ${fmt(st.n)} sales<br>${half}<br>` +
+      `<span style="color:${theme.quiet}">${statusOf(c, cur)}</span>`;
   }
   const kindOf = c => { const st = S.get(c); return charted(st) ? 'data' : st ? 'fog' : 'none'; };
 
@@ -359,29 +404,32 @@ export function createViewB(container, data, theme, { width, height }) {
   function preview(Sp) { previewPath.attr('d', path(coastFor(Sp))).attr('opacity', 1); coastPath.attr('opacity', 0.25); }
   function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); }
 
-  // Budget: drag across the curve, click a spot, or use the arrow keys on the handle
+  // Budget: drag the handle (or anywhere on the bar or chart); click to jump; arrow keys on the handle.
+  // While dragging, the handle and the line follow the pointer exactly; the budget sent is rounded.
   let pending = null;
-  function sendBudget(b) {
-    b = Math.max(BUDGET_MIN, Math.min(BUDGET_MAX, b));
-    placeBudget(b, false);
-    budgetText.html(budgetHtml(b, cur.size));
+  function sendBudget(b, x) {
+    placeBudget(b, false, x);
     if (pending == null) requestAnimationFrame(() => { const v = pending; pending = null; if (v != null) ev.emit('budget', v); });
     pending = b;
   }
-  const atX = x => roundBudget(cx.invert(x));
-  const drag = d3.drag().container(chart.node()).clickDistance(4)
-    .on('drag', e => { if (cur) { dragging = true; sendBudget(atX(e.x)); } })
-    .on('end', () => requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; })));
-  plotBg.call(drag).on('click', event => { if (cur) ev.emit('budget', atX(d3.pointer(event, chart.node())[0])); });
-  handle.call(drag).on('keydown', event => {
+  const clampX = x => Math.max(cm.l, Math.min(width - cm.r, x));
+  const atX = x => roundBudget(cx.invert(clampX(x)));
+  const drag = d3.drag().container(chart.node()).clickDistance(3)
+    .on('start', () => { knobHalo.interrupt().attr('fill-opacity', 0.16); knob.style('cursor', 'grabbing'); })
+    .on('drag', e => { if (cur) { dragging = true; sendBudget(atX(e.x), clampX(e.x)); } })
+    .on('end', () => {
+      knob.style('cursor', 'grab'); knobHalo.transition().duration(250).attr('fill-opacity', 0);
+      requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; if (cur) placeBudget(cur.budget, true); }));
+    });
+  const jump = event => { if (cur) ev.emit('budget', atX(d3.pointer(event, chart.node())[0])); };
+  plotBg.call(drag).on('click', jump);
+  barHit.call(drag).on('click', jump);
+  knob.call(drag).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
     event.preventDefault();
     ev.emit('budget', roundBudget(Math.max(BUDGET_MIN, Math.min(BUDGET_MAX, cur.budget * f))));
-  }).on('focus', () => handleRect.attr('fill', theme.accent)).on('blur', () => handleRect.attr('fill', theme.ink));
-
-  const budgetHtml = (b, size) => `Your budget <strong style="color:${theme.ink}">${aed(b)}</strong> for ${size} m² ` +
-    `→ up to AED ${fmt(b / size)} per m² · <span style="color:${theme.quiet}">drag the line on the chart below to change it</span>`;
+  });
 
   // ---------- drawing ----------
   function drawData(s, animate) {
@@ -425,10 +473,9 @@ export function createViewB(container, data, theme, { width, height }) {
     // Communities that went under since "then": outlined, always (the finding, not a hover)
     gFlip.selectAll('path').data(flipped, c => c).join('path').attr('d', c => path(byComm.get(c)))
       .attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.6).attr('stroke-linejoin', 'round');
-    keyFlip.html(same ? '' : `${swatch('transparent', theme.accent)}went under since ${periodLabel(s.thenPeriod)}`);
+    keyFlip.html(same ? '' : `${swatch('transparent', theme.accent)}<strong>${flipped.length}</strong> went under since ${periodLabel(s.thenPeriod)}`);
 
     drawHeadline(s, same, cameBack, animate);
-    budgetText.html(budgetHtml(s.budget, s.size));
 
     clearTimeout(heavyTimer);
     if (dragging) heavyTimer = setTimeout(() => drawHeavy(s, same), 120);
@@ -441,39 +488,18 @@ export function createViewB(container, data, theme, { width, height }) {
     readoutValues = target;
     const b = `<strong>${aed(s.budget)}</strong> for ${s.size} m²`;
     const render = v => same
-      ? `At ${b}, <strong>${pctFmt(v[0])}</strong> of communities with enough sales are within reach in ${periodLabel(s.period)}.`
-      : `At ${b}, <strong>${pctFmt(v[0])}</strong> of these ${C.n} communities were within reach in ${periodLabel(s.thenPeriod)}. ` +
-        `In ${periodLabel(s.period)}: <strong>${pctFmt(v[1])}</strong>.`;
+      ? `${b} reaches <strong>${pctFmt(v[0])}</strong> of communities with enough sales in ${periodLabel(s.period)}.`
+      : `${b} reached <strong>${pctFmt(v[0])}</strong> of these ${C.n} communities in ${periodLabel(s.thenPeriod)} ` +
+        `and <strong style="color:${theme.depth.deep}">${pctFmt(v[1])}</strong> in ${periodLabel(s.period)}.`;
     headline.interrupt();
     if (!animate || reduceMotion) headline.html(render(target));
     else { const i = d3.interpolate(from, target); headline.transition().duration(650).tween('n', () => t => headline.html(render(i(t)))); }
 
-    // Annotation: who went under, where, and how much of it is the kind of home being sold
-    const parts = [];
-    if (!same && flipped.length) {
-      const names = flipped.slice().sort((a, b2) => S.get(b2).n - S.get(a).n).map(nameOf);
-      const km = d3.median(flipped, kmFromCentre);
-      const residents = d3.sum(flipped, pop);
-      parts.push(`<span style="color:${theme.accent};font-weight:600">${flipped.length} went under</span> since ${periodLabel(s.thenPeriod)}` +
-        (Number.isFinite(km) ? `, typically ${Math.round(km)} km from Downtown` : '') + `: ${names.slice(0, 3).join(', ')}` +
-        (names.length > 3 ? ` and ${names.length - 3} more` : '') + (residents ? ` (${d3.format('.2~s')(residents)} residents in 2019)` : '') + '.');
-    }
-    if (!same && cameBack.length) parts.push(`${cameBack.length} came back within reach.`);
-    const lines = [parts.join(' ')];
-    if (!same) {
-      // The budget that reaches as far now as yours did then (the dashed step on the chart)
-      const edges = C.set.map(c => S.get(c).edge).sort(d3.ascending);
-      const k = Math.ceil(C.land1 * edges.length - 1e-9);
-      const eq = k >= 1 ? ceilBudget(edges[k - 1]) : NaN;
-      const reach = Number.isFinite(eq) && Math.abs(C.land2 - C.land1) > 1e-9
-        ? `To reach as far as in ${periodLabel(s.thenPeriod)} you would need <strong style="color:${theme.ink}">${aed(eq)}</strong>. ` : '';
-      const others = ['all', 'ready', 'offplan'].filter(m => m !== s.mode).map(m => {
-        const c2 = comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
-        return `${MODE_LABEL[m].replace(' only', '').toLowerCase()} ${pctFmt(c2.land1)} → ${pctFmt(c2.land2)}`;
-      });
-      lines.push(`${reach}Same budget by type of home: ${others.join(', ')}.`);
-    }
-    annotation.html(lines.filter(Boolean).join('<br>'));
+    // The same comparison for each kind of home, inside its button
+    modeNums.text(m => {
+      const c2 = m === s.mode ? C : comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
+      return same ? pctFmt(m === s.mode ? chartedShare(S) : c2.land2) : `${pctFmt(c2.land1)} → ${pctFmt(c2.land2)}`;
+    });
   }
 
   let heavyTimer = null;
@@ -510,17 +536,29 @@ export function createViewB(container, data, theme, { width, height }) {
     const set = C.set;
     periodsInfo = PERIOD_KEYS.map(p => {
       const Sp = p === s.period ? S : p === s.thenPeriod ? Sthen : statsFor(p, s);
-      const edges = set.filter(c => charted(Sp.get(c))).map(c => Sp.get(c).edge).sort(d3.ascending);
+      const inP = set.filter(c => charted(Sp.get(c)));
+      const edges = inP.map(c => Sp.get(c).edge).sort(d3.ascending);
       const n = edges.length;
       const pts = [[BUDGET_MIN, d3.bisectRight(edges, BUDGET_MIN) / n]];
       edges.forEach((e, i) => { if (e > BUDGET_MIN && e < BUDGET_MAX) pts.push([e, (i + 1) / n]); });
       pts.push([BUDGET_MAX, d3.bisectRight(edges, BUDGET_MAX) / n]);
-      const share = set.filter(c => charted(Sp.get(c))).length
-        ? set.filter(c => isLand(Sp.get(c))).length / set.filter(c => charted(Sp.get(c))).length : NaN;
+      const share = n ? inP.filter(c => isLand(Sp.get(c))).length / n : NaN;
       return { p, pts, edges, n, share, Sp };
     }).filter(d => d.n > 0);
     const role = p => p === s.period ? 'now' : (!same && p === s.thenPeriod) ? 'then' : 'other';
+    const strokeOf = d => ({ now: theme.depth.deep, then: thenColor, other: '#d3d9e0' })[role(d.p)];
+    const widthOf = d => ({ now: 2.6, then: 2, other: 1.1 })[role(d.p)];
     const order = { other: 0, then: 1, now: 2 };
+
+    // The ground lost between then and now, shaded
+    const nowI = periodsInfo.find(d => d.p === s.period), thenI = same ? null : periodsInfo.find(d => d.p === s.thenPeriod);
+    if (nowI && thenI) {
+      const at = (d, b) => d3.bisectRight(d.edges, b) / d.n;
+      const xs = [...new Set([BUDGET_MIN, ...nowI.edges, ...thenI.edges, BUDGET_MAX])]
+        .filter(b => b >= BUDGET_MIN && b <= BUDGET_MAX).sort(d3.ascending);
+      band.attr('d', stepArea(xs.map(b => [b, at(nowI, b), Math.max(at(nowI, b), at(thenI, b))]))).attr('opacity', 1);
+    } else band.attr('opacity', 0);
+
     const lines = gLines.selectAll('g').data(periodsInfo.slice().sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
       .join(enter => {
         const g = enter.append('g').style('cursor', 'pointer');
@@ -528,147 +566,132 @@ export function createViewB(container, data, theme, { width, height }) {
         g.append('path').attr('class', 'hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 10);
         return g;
       }).order();
-    lines.select('.ln').interrupt()
-      .attr('stroke', d => role(d.p) === 'now' ? theme.depth.deep : role(d.p) === 'then' ? theme.quiet : lineGrey)
-      .attr('stroke-width', d => role(d.p) === 'now' ? 2.4 : role(d.p) === 'then' ? 1.8 : 1.2)
-      .attr('d', d => step(d.pts));
+    lines.select('.ln').interrupt().attr('stroke', strokeOf).attr('stroke-width', widthOf).attr('d', d => step(d.pts));
     lines.select('.hit').attr('d', d => step(d.pts))
       .on('mouseenter', (event, d) => {
-        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', 2.6);
+        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', widthOf(d) + 1).attr('stroke', role(d.p) === 'other' ? '#9aa3ad' : strokeOf(d));
         if (d.p !== s.period) preview(d.Sp);
       })
       .on('mousemove', (event, d) => showTip(event, `<strong>${periodLabel(d.p)}</strong>: ${pctFmt(d.share)} within reach at your budget<br>` +
-        `<span style="color:${theme.quiet}">${d.p === s.period ? 'The period on the map.' : 'Dashed on the map. Click to show this period.'}</span>`))
+        `<span style="color:${theme.quiet}">${d.p === s.period ? 'The period on the map.' : 'Its coastline is dashed on the map. Click to show this period.'}</span>`))
       .on('mouseleave', (event, d) => {
         hideTip(); endPreview();
-        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', role(d.p) === 'now' ? 2.4 : role(d.p) === 'then' ? 1.8 : 1.2);
+        lines.filter(x => x.p === d.p).select('.ln').attr('stroke-width', widthOf(d)).attr('stroke', strokeOf(d));
       })
       .on('click', (event, d) => { event.stopPropagation(); hideTip(); endPreview(); if (d.p !== s.period) ev.emit('period', d.p); });
 
-    chartTitle.text(`How far does a budget reach? Share of the ${set.length} communities within reach, by budget (${s.size} m²)`);
-    chartLegend.html(same ? `<tspan fill="${theme.depth.deep}" font-weight="600">— ${periodLabel(s.period)}</tspan>  <tspan fill="${lineGrey}">— other periods</tspan>`
-      : `<tspan fill="${theme.depth.deep}" font-weight="600">— ${periodLabel(s.period)}</tspan>  <tspan fill="${theme.quiet}">— ${periodLabel(s.thenPeriod)}</tspan>  <tspan fill="#9aa3ad">— other periods</tspan>`);
+    chartTitle.text(`How much of the city does your budget reach? (${set.length} communities, ${s.size} m²)`);
+    // Legend, right-aligned: a short line in each style and its name
+    const items = [{ c: theme.depth.deep, w: 2.6, t: periodLabel(s.period), ink: true },
+      same ? null : { c: thenColor, w: 2, t: periodLabel(s.thenPeriod) },
+      { c: '#c3cad3', w: 1.2, t: 'other periods' }, { c: theme.depth.shallow, w: 8, t: 'reach lost', band: !same }].filter(d => d && d.band !== false);
+    chartLegend.selectAll('*').remove();
+    let lx = width;
+    items.slice().reverse().forEach(d => {
+      const tx = chartLegend.append('text').attr('y', 11).attr('text-anchor', 'end').attr('fill', d.ink ? theme.ink : theme.quiet)
+        .style('font', `${d.ink ? 600 : 400} ${theme.size.small}px ${theme.font}`).attr('x', lx).text(d.t);
+      const tw = tx.node().getComputedTextLength();
+      const x1 = lx - tw - 22;
+      chartLegend.append('line').attr('x1', x1).attr('x2', x1 + 16).attr('y1', 7).attr('y2', 7).attr('stroke', d.c)
+        .attr('stroke-width', d.w).attr('stroke-opacity', d.band ? 0.3 : 1);
+      lx = x1 - 16;
+    });
     placeBudget(s.budget, !dragging && !!prev);
+    drawPick(cur);
   }
 
-  // Budget line, the two dots where it meets "then" and "now", and the budget that reaches as far now as yours did then
-  function placeBudget(b, animate) {
+  // The budget line, the handle, the two dots (then, now) and the arrow to the budget that reaches as far now
+  function placeBudget(b, animate, xOverride) {
     if (!cur || !C) return;
-    const x = cx(b);
+    const x = xOverride ?? cx(b);
     const t = animate && !reduceMotion ? d3.transition().duration(450).ease(d3.easeCubicOut) : null;
-    const go = sel => t ? sel.transition(t) : sel;
-    go(budgetLine.interrupt()).attr('x1', x).attr('x2', x);
-    const label = aed(b);
-    const w = label.length * 6.2 + 18;
-    go(handleRect.interrupt()).attr('x', x - w / 2).attr('width', w);
-    go(handleText.interrupt()).attr('x', x);
-    handleText.text(label);
-    handle.attr('aria-valuenow', b).attr('aria-valuetext', label);
-    xTicks.selectAll('text').attr('opacity', v => Math.abs(cx(v) - x) < w / 2 + 16 ? 0 : 1);
+    const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
+    go(budgetLine).attr('x1', x).attr('x2', x);
+    go(barFill).attr('width', Math.max(0, x - cm.l));
+    go(knob).attr('transform', `translate(${x},${barY})`);
+    const label = `${aed(b)} · ${fmt(b / cur.size)}/m²`;
+    const w = label.length * 6.3 + 22;
+    bubbleText.text(label);
+    bubbleRect.attr('x', -w / 2).attr('width', w);
+    tickLabels.attr('opacity', v => Math.abs(cx(v) - x) < w / 2 + 14 ? 0 : 1);
+    knob.attr('aria-valuenow', b).attr('aria-valuetext', aed(b));
 
     const same = cur.thenPeriod === cur.period;
     const shareAt = d => d ? d3.bisectRight(d.edges, b) / d.n : NaN;
     const now = periodsInfo.find(d => d.p === cur.period), then = same ? null : periodsInfo.find(d => d.p === cur.thenPeriod);
     const dots = [now && { k: 'now', v: shareAt(now), c: theme.depth.deep, p: cur.period },
-      then && { k: 'then', v: shareAt(then), c: theme.quiet, p: cur.thenPeriod }].filter(Boolean);
-    const side = d => (d.k === 'now') === (x < width - 200);   // true: label to the right
+      then && { k: 'then', v: shareAt(then), c: thenColor, p: cur.thenPeriod }].filter(Boolean);
+    const leftSide = x > cm.l + 120;     // labels sit left of the line, clear of the arrow
+    const ys = dots.map(d => cy(d.v));
+    if (ys.length === 2 && Math.abs(ys[0] - ys[1]) < 15) {   // keep the two labels apart
+      const mid = (ys[0] + ys[1]) / 2, up = ys[1] <= ys[0] ? 1 : 0;
+      ys[up] = mid - 8; ys[1 - up] = mid + 8;
+    }
     gDots.selectAll('g').data(dots, d => d.k).join(enter => {
       const g = enter.append('g');
       g.append('circle').attr('r', 4.5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-      g.append('text').attr('dy', '0.35em').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
+      g.append('text').attr('dy', '0.35em').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
         .style('font', `600 ${theme.size.small}px ${theme.font}`);
       return g;
-    }).each(function (d) {
+    }).each(function (d, i) {
       const g = d3.select(this);
-      // keep the two labels apart when the dots are close
-      go(g.select('circle').interrupt()).attr('cx', x).attr('cy', cy(d.v)).attr('fill', d.c);
-      go(g.select('text').interrupt()).attr('x', side(d) ? x + 9 : x - 9).attr('y', cy(d.v));
-      g.select('text').attr('text-anchor', side(d) ? 'start' : 'end').attr('fill', d.c)
+      go(g.select('circle')).attr('cx', x).attr('cy', cy(d.v)).attr('fill', d.c);
+      go(g.select('text')).attr('x', leftSide ? x - 10 : x + 10).attr('y', ys[i]);
+      g.select('text').attr('text-anchor', leftSide ? 'end' : 'start').attr('fill', d.c)
         .text(`${pctFmt(d.v)} in ${periodLabel(d.p)}`);
     });
 
-    // Same reach now: the smallest budget at which "now" reaches the share "then" reached at your budget
+    // The arrow: from "then" at your budget, across to where "now" reaches as far
     gEq.selectAll('*').remove();
     if (then && now) {
       const target = shareAt(then), k = Math.ceil(target * now.n - 1e-9);
       if (k >= 1 && k <= now.n && Math.abs(shareAt(now) - target) > 1e-9) {
-        const eq = ceilBudget(now.edges[k - 1]);
-        const x2 = cx(eq), y2 = cy(target);
-        gEq.append('line').attr('x1', x).attr('x2', x2).attr('y1', y2).attr('y2', y2)
-          .attr('stroke', theme.depth.deep).attr('stroke-dasharray', '2 3').attr('pointer-events', 'none');
-        gEq.append('circle').attr('cx', x2).attr('cy', y2).attr('r', 3.5).attr('fill', '#ffffff')
-          .attr('stroke', theme.depth.deep).attr('stroke-width', 1.6).attr('pointer-events', 'none');
-        const up = eq > b;
-        const lab = gEq.append('text').attr('x', x2 + (up ? 7 : -7)).attr('y', y2 + 14).attr('text-anchor', up ? 'start' : 'end')
-          .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
-          .style('font', `600 ${theme.size.small}px ${theme.font}`).style('cursor', 'pointer')
-          .text(`${aed(eq)} ›`);
-        lab.append('title').text(`Click to set your budget to ${aed(eq)}`);
-        lab.on('click', () => ev.emit('budget', eq));
+        const eq = ceilBudget(now.edges[k - 1]), x2 = cx(eq), y2 = cy(target);
+        if (Math.abs(x2 - x) > 24) {
+          const more = eq > b;
+          gEq.append('line').attr('x1', x + (more ? 6 : -6)).attr('x2', x2 + (more ? -5 : 5)).attr('y1', y2).attr('y2', y2)
+            .attr('stroke', theme.depth.deep).attr('stroke-width', 1.4).attr('marker-end', 'url(#vb-arrow)')
+            .attr('pointer-events', 'none');
+          const lab = gEq.append('g').style('cursor', 'pointer').on('click', () => ev.emit('budget', eq));
+          lab.append('title').text(`Set your budget to ${aed(eq)}`);
+          // label starts beside the budget line on the arrow's side, so it never covers the dot labels
+          const fitsRight = more && x + 8 + 250 < width - cm.r;
+          lab.append('text').attr('x', more ? (fitsRight ? x + 8 : x2) : x - 8).attr('y', y2 - 8)
+            .attr('text-anchor', more ? (fitsRight ? 'start' : 'end') : 'end')
+            .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
+            .style('font', `600 ${theme.size.small}px ${theme.font}`)
+            .text(`${more ? '+' : '−'}${aed(Math.abs(eq - b)).replace('AED ', 'AED ')} reaches as far: ${aed(eq)}`);
+        }
       }
     }
   }
 
-  // Selection card: details on demand, words and numbers only
-  function drawCard(s) {
-    const c = s.selected;
-    if (!c || !byComm.has(c)) { card.style('display', 'none'); gEdges.selectAll('*').remove(); return; }
-    const st = S.get(c), stThen = Sthen.get(c), same = s.thenPeriod === s.period;
-    const seq = PERIOD_KEYS.map(p => { const x = statsFor(p, s).get(c); return { p, k: !x ? 'none' : !charted(x) ? 'fog' : isLand(x) ? 'land' : 'water', x }; });
-    const firstWater = seq.findIndex((d, i) => d.k === 'water' && seq.slice(0, i).some(e => e.k === 'land'));
-    const status = seq.every(d => d.k !== 'water' && d.k !== 'land') ? 'Not enough sales in any period.'
-      : seq.filter(d => d.k === 'land' || d.k === 'water').every(d => d.k === 'water') ? 'Out of reach in every period with enough sales.'
-      : seq.filter(d => d.k === 'land' || d.k === 'water').every(d => d.k === 'land') ? 'Within reach in every period with enough sales.'
-      : firstWater >= 0 ? `Went under in ${periodLabel(seq[firstWater].p)}.` : 'Came back within reach.';
-    const chip = d => `<span title="${periodLabel(d.p)}" style="display:inline-block;width:46px;margin-right:3px;text-align:center;font-size:10px;color:${theme.quiet}">` +
-      `<span style="display:block;height:8px;border-radius:2px;margin-bottom:2px;background:${d.k === 'none' ? noSales : d.k === 'fog' ? fogBg : depthColor(outOf(d.x))};` +
-      `border:1px solid ${d.p === s.period ? theme.ink : 'transparent'}"></span>${periodLabel(d.p).slice(2)}</span>`;
-    const row = (label, a, b) => `<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:${theme.quiet}">${label}</span><span>${a}</span></div>`;
-    const edgeNow = charted(st) ? aed(st.edge) : '—', edgeThen = charted(stThen) ? aed(stThen.edge) : '—';
-    const change = charted(st) && charted(stThen) ? ` <span style="color:${theme.quiet}">(${d3.format('+.0%')(st.edge / stThen.edge - 1)})</span>` : '';
-    const html =
-      `<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">` +
-        `<div><strong style="font-size:${theme.size.label}px">${nameOf(c)}</strong>` +
-        (alsoKnownAs(c) ? `<div style="color:${theme.quiet}">${alsoKnownAs(c)}</div>` : '') + `</div>` +
-        `<button type="button" data-act="close" aria-label="Close" style="border:0;background:none;font-size:16px;line-height:1;cursor:pointer;color:${theme.quiet}">×</button></div>` +
-      `<div style="margin:6px 0 4px">${status}</div>` +
-      `<div style="margin-bottom:8px">${seq.map(chip).join('')}</div>` +
-      `<div style="color:${theme.quiet};margin-bottom:2px">Budget for half the homes here (${s.size} m²)</div>` +
-      (same ? row(periodLabel(s.period), edgeNow, '') : row(periodLabel(s.thenPeriod), edgeThen) + row(periodLabel(s.period), `<strong>${edgeNow}</strong>${change}`)) +
-      `<div style="color:${theme.quiet};margin:6px 0 2px">Homes within ${aed(s.budget)}</div>` +
-      (same ? row(periodLabel(s.period), charted(st) ? pctFmt(st.shareWithin) : '—')
-        : row(`${periodLabel(s.thenPeriod)} → ${periodLabel(s.period)}`,
-          `${charted(stThen) ? pctFmt(stThen.shareWithin) : '—'} → <strong>${charted(st) ? pctFmt(st.shareWithin) : '—'}</strong>`)) +
-      `<div style="color:${theme.quiet};margin-top:2px">${st ? fmt(st.n) : 0} sales in ${periodLabel(s.period)}</div>` +
-      `<div style="display:flex;gap:6px;margin-top:10px">` +
-        (isWater(st) ? `<button type="button" data-act="budget" title="The budget at which half the homes here are within reach" style="${btn(true)}">Use ${aed(ceilBudget(st.edge))}</button>` : '') +
-        `<button type="button" data-act="pin" style="${btn(false)}">${(s.pinned || []).includes(c) ? 'Unpin' : 'Pin'}</button></div>`;
-    card.html(html).style('display', 'block');
-    card.style('top', `${mapTop() + mapH - card.node().offsetHeight - 12}px`);
-    card.selectAll('button[data-act]').on('click', function () {
-      const act = this.getAttribute('data-act');
-      if (act === 'close') ev.emit('select', null);
-      if (act === 'budget') ev.emit('budget', ceilBudget(st.edge));
-      if (act === 'pin') ev.emit('pin', c);
+  // The selected (and hovered) community on the chart: the step where it comes within reach, then and now
+  function drawPick(s) {
+    if (!s) return;
+    const picks = [];
+    [[s.selected, 'sel'], [s.hovered !== s.selected ? s.hovered : null, 'hov']].forEach(([c, kind]) => {
+      if (!c) return;
+      periodsInfo.filter(d => d.p === s.period || (d.p === s.thenPeriod && s.thenPeriod !== s.period)).forEach(d => {
+        const st = d.Sp.get(c);
+        if (!charted(st) || !C.set.includes(c) || st.edge < BUDGET_MIN || st.edge > BUDGET_MAX) return;
+        picks.push({ c, kind, now: d.p === s.period, x: cx(st.edge), y: cy(d3.bisectRight(d.edges, st.edge) / d.n) });
+      });
     });
-
-    // On the chart: where this community crosses to land, then and now (ticks on the budget axis)
-    const ticks = [charted(stThen) && !same ? { v: stThen.edge, c: theme.quiet } : null, charted(st) ? { v: st.edge, c: theme.ink } : null].filter(Boolean);
-    gEdges.selectAll('*').remove();
-    ticks.forEach(t2 => gEdges.append('path').attr('d', `M${cx(t2.v)},${chartH - cm.b - 1}l-4,-7h8z`).attr('fill', t2.c));
-    if (ticks.length) gEdges.append('text').attr('x', cx(d3.max(ticks, t2 => t2.v)) + 7).attr('y', chartH - cm.b - 4)
-      .attr('fill', theme.ink).style('font-size', '10px').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
-      .text(nameOf(c));
+    gPick.selectAll('circle').data(picks, d => d.kind + d.c + d.now).join('circle')
+      .attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.kind === 'sel' ? 5.5 : 4.5).attr('fill', '#ffffff')
+      .attr('stroke', d => d.now ? theme.depth.deep : thenColor).attr('stroke-width', d => d.kind === 'sel' ? 2.4 : 1.6);
+    gPick.selectAll('text').data(picks.filter(d => d.now), d => d.kind + d.c).join('text')
+      .attr('x', d => d.x + 8).attr('y', d => d.y + 13).attr('fill', theme.ink).attr('paint-order', 'stroke')
+      .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `600 10.5px ${theme.font}`).text(d => nameOf(d.c));
   }
-  const btn = primary => `font:600 ${theme.size.small}px ${theme.font};padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;` +
-    (primary ? `background:${theme.ink};color:#fff;border:1px solid ${theme.ink}` : `background:#fff;color:${theme.ink};border:1px solid ${theme.grid}`);
 
   function drawMarks(s) {
     modeButtons
       .attr('aria-pressed', d => String(d === s.mode))
-      .style('background', d => d === s.mode ? theme.ink : '#ffffff')
-      .style('color', d => d === s.mode ? '#ffffff' : theme.ink)
-      .style('border', d => `1px solid ${d === s.mode ? theme.ink : theme.grid}`);
+      .style('background-color', d => d === s.mode ? '#ffffff' : 'transparent')
+      .style('color', d => d === s.mode ? theme.ink : theme.quiet)
+      .style('box-shadow', d => d === s.mode ? '0 1px 3px rgba(15,30,50,0.14)' : 'none');
 
     const fogHighlight = s.highlight === 'fog';
     commPaths.attr('stroke', f => fogHighlight && kindOf(commOfF(f)) === 'fog' ? theme.accent : '#ffffff')
@@ -712,8 +735,7 @@ export function createViewB(container, data, theme, { width, height }) {
       const pinsChanged = !prev || (prev.pinned || []).join() !== (s.pinned || []).join();
       if (dataChanged || prev.selected !== s.selected || prev.hovered !== s.hovered || pinsChanged ||
           prev.highlight !== s.highlight) drawMarks(s);
-      // the card is rebuilt only when what it says changes (never on hover, so its buttons stay clickable)
-      if (dataChanged || prev.selected !== s.selected || pinsChanged) drawCard(s);
+      if (!dataChanged && (prev.selected !== s.selected || prev.hovered !== s.hovered || prev.thenPeriod !== s.thenPeriod)) drawPick(s);
       prev = s;
     },
     on: ev.on,
