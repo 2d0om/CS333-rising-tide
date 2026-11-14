@@ -2,10 +2,11 @@
 //
 // The map's colours are drawn by the SVG underneath, exactly from the data. This one transparent
 // layer only adds movement on top, inside masks rasterised from the same community shapes:
-//   water — a warped wave surface lit by a low sun: darker troughs, lighter faces, the sky mirrored
-//           in the slopes, a soft highlight on the crests, and foam that laps along the coast;
-//   fog   — 3D clouds over communities with too few sales that churn in place (time is the third
-//           axis of the noise), lit from one side so they have volume, never fully opaque.
+//   water — neighbourhoods out of reach look drowned: the sandy ground shows through the water (less
+//           the deeper they are), with a moving net of light on it, paler shallows at the shore, a
+//           wave surface lit by a low sun, and foam along the coast;
+//   fog   — clouds over neighbourhoods with too few sales: wispy edges, churning in place (time is
+//           the third axis of the noise), lit from one side, with a soft shadow on the ground.
 // Names, borders, the coastline and selections are drawn in an SVG above this layer, so they
 // stay sharp through the fog. When the sea moves, the old and new masks cross-fade, so water,
 // foam and fog glide to their new places instead of jumping.
@@ -65,57 +66,78 @@ float sea(vec2 p, float t) {
 void main() {
   vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
   vec3 m = mix(texture2D(uA, uv).rgb, texture2D(uB, uv).rgb, uMix);
-  float water = m.r, fog = m.g, land = m.b;
-  if (water < 0.01 && fog < 0.01) { gl_FragColor = vec4(0.0); return; }
+  vec2 sOff = vec2(5.0, 6.0) / uSize;                       // the fog's shadow falls to the south-east
+  float fogSh = mix(texture2D(uA, uv - sOff).g, texture2D(uB, uv - sOff).g, uMix);
+  float wRaw = m.r, fogM = m.g, land = m.b;
+  if (wRaw < 0.01 && fogM < 0.01 && fogSh < 0.01) { gl_FragColor = vec4(0.0); return; }
   vec2 p = uv * uSize;
   float t = uTime;
   vec4 col = vec4(0.0);
 
-  if (water > 0.01) {
+  if (wRaw > 0.01) {
+    float water = smoothstep(0.03, 0.30, wRaw);
+    float depth = clamp((wRaw - 0.35) / 0.65, 0.0, 1.0);    // 0 just under, 1 nothing within reach
+    float see = (1.0 - depth) * (1.0 - depth);              // how clearly the drowned ground shows through
     float e = 1.2;
     float h = sea(p, t);
     vec2 g = vec2(sea(p + vec2(e, 0.0), t) - h, sea(p + vec2(0.0, e), t) - h) / e;
     vec3 n = normalize(vec3(-g * 4.6, 1.0));
     vec3 L = normalize(vec3(-0.45, -0.55, 0.70));
-    vec3 V = vec3(0.0, 0.0, 1.0);
-    // troughs a little darker, faces toward the sun a little lighter
+    // the drowned ground: sand ripples seen through the water, bent by the waves above them
+    vec2 rp = p + n.xy * 16.0;
+    float bed = 0.5 + 0.5 * sin(dot(rp, vec2(0.62, 0.78)) / 3.4 + fbm(rp / 30.0) * 6.0);
+    float aBed = see * (0.10 + 0.10 * bed);
+    col = vec4(vec3(0.95, 0.88, 0.70) * aBed, aBed);
+    // caustics: the net of light the waves throw on that ground, strongest where it is shallow
+    vec2 cp = rp / 15.0 + vec2(t * 0.05, -t * 0.04);
+    float c1 = 1.0 - abs(2.0 * noise(cp + fbm(cp * 0.7) * 1.3) - 1.0);
+    float c2 = 1.0 - abs(2.0 * noise(cp * 1.7 - vec2(t * 0.07, t * 0.03) + 4.1) - 1.0);
+    float ca = pow(c1 * c2, 3.2) * (0.10 + 0.42 * see);
+    col = col * (1.0 - ca) + vec4(vec3(0.93, 1.0, 0.97) * ca, ca);
+    // shallows: paler, greener water close to the shore
+    float sh = smoothstep(0.10, 0.60, land) * 0.24;
+    col = col * (1.0 - sh) + vec4(vec3(0.66, 0.92, 0.88) * sh, sh);
+    // light on the surface: darker troughs, lighter faces, the sky in the slopes, sun on the crests
     float l = dot(n, L) - L.z;
-    float aLight = l > 0.0 ? min(l * 0.55, 0.16) : min(-l * 0.5, 0.15);
-    vec3 cLight = l > 0.0 ? vec3(0.92, 0.97, 1.0) : vec3(0.02, 0.08, 0.17);
-    col = vec4(cLight * aLight, aLight);
-    // the sky mirrored in the wave faces (fresnel), and a soft sun highlight on the crests
-    float fres = pow(1.0 - max(n.z, 0.0), 2.2) * 0.9;
-    vec3 sky = vec3(0.86, 0.93, 1.0);
-    float aSky = clamp(fres, 0.0, 0.22);
-    col = col * (1.0 - aSky) + vec4(sky * aSky, aSky);
-    vec3 Hh = normalize(L + V);
-    float spec = pow(max(dot(n, Hh), 0.0), 70.0) * 0.32 + pow(max(dot(n, Hh), 0.0), 12.0) * 0.05;
+    float aL = l > 0.0 ? min(l * 0.55, 0.16) : min(-l * 0.5, 0.15 + 0.05 * depth);
+    vec3 cL = l > 0.0 ? vec3(0.92, 0.97, 1.0) : vec3(0.02, 0.08, 0.17);
+    col = col * (1.0 - aL) + vec4(cL * aL, aL);
+    float aSky = clamp(pow(1.0 - max(n.z, 0.0), 2.2) * 0.9, 0.0, 0.22);
+    col = col * (1.0 - aSky) + vec4(vec3(0.86, 0.93, 1.0) * aSky, aSky);
+    vec3 Hh = normalize(L + vec3(0.0, 0.0, 1.0));
+    float nh = max(dot(n, Hh), 0.0);
+    float spec = pow(nh, 90.0) * 0.38 + pow(nh, 12.0) * 0.05;
     col = col * (1.0 - spec) + vec4(vec3(1.0, 0.99, 0.95) * spec, spec);
-    // foam: a soft line along the shore and gentle laps rolling toward it
-    float breakup = 0.55 + 0.45 * smoothstep(0.3, 0.7, noise(p / 6.0 + vec2(t * 0.12, -t * 0.05)));
+    // foam: a broken line along the shore and laps rolling toward it
+    float breakup = 0.5 + 0.5 * smoothstep(0.3, 0.7, noise(p / 6.0 + vec2(t * 0.12, -t * 0.05)));
     float edge = smoothstep(0.42, 0.72, land);
     float lap = smoothstep(0.82, 1.0, sin(land * 24.0 - t * 1.25 + noise(p / 36.0) * 3.0)) * smoothstep(0.06, 0.32, land);
-    float foam = clamp(edge * 0.7 + lap * 0.4, 0.0, 0.8) * breakup;
+    float foam = clamp(edge * 0.75 + lap * 0.42, 0.0, 0.85) * breakup;
     col = col * (1.0 - foam) + vec4(vec3(foam), foam);
     col *= water;
   }
 
+  // Fog: wispy edges (the mask is eroded by noise, so it never follows the borders exactly), two
+  // layers of 3D noise churning in place at different scales, lit from the north-west, and a soft
+  // shadow on the ground beside it, which is what makes it sit above the map.
+  float wisp = fbm(p / 20.0 + vec2(t * 0.025, -t * 0.02));
+  float fog = smoothstep(0.32, 0.70, fogM + (wisp - 0.5) * 0.55);
+  float shadow = smoothstep(0.05, 0.95, fogSh) * (1.0 - fog) * 0.13;
+  col = col * (1.0 - shadow) + vec4(vec3(0.05, 0.09, 0.15) * shadow, shadow);
   if (fog > 0.01) {
-    // volumetric-looking fog: density from 3D noise evolving in time (it churns in place), lit from the
-    // north-west by sampling the density a step toward the light (thicker toward the light = shadowed)
-    vec3 q = vec3(p / 64.0, t * 0.07);
-    float d = clamp(fbm3(q) * 1.25 - 0.18, 0.0, 1.0);
-    float dl = clamp(fbm3(q + vec3(-0.09, -0.09, 0.0)) * 1.25 - 0.18, 0.0, 1.0);
-    float shade = clamp(0.82 + (d - dl) * 3.4, 0.38, 1.12);
-    vec3 fc = mix(vec3(0.55, 0.61, 0.70), vec3(1.0), shade);
-    float a = fog * (0.5 + 0.42 * smoothstep(0.12, 0.78, d));
+    vec3 q = vec3(p / 70.0, t * 0.06);
+    vec3 q2 = vec3(p / 31.0 + 9.0, t * 0.10);
+    float d = clamp(fbm3(q) * 0.95 + fbm3(q2) * 0.5 - 0.28, 0.0, 1.0);
+    vec3 lo = vec3(-0.10, -0.10, 0.0);
+    float dl = clamp(fbm3(q + lo) * 0.95 + fbm3(q2 + lo * 2.2) * 0.5 - 0.28, 0.0, 1.0);
+    float shade = clamp(0.84 + (d - dl) * 3.6, 0.36, 1.12);
+    vec3 fc = mix(vec3(0.52, 0.58, 0.67), vec3(1.0), shade);
+    float a = fog * (0.42 + 0.53 * smoothstep(0.08, 0.75, d));
     col = col * (1.0 - a) + vec4(fc * a, a);
   }
   gl_FragColor = col;
 }`;
 
-// drawShapes(ctx, which) must draw (fill) the requested shapes into a 2D context in CSS px:
-// which = 'water' | 'fog' | 'land'
 export function createSurface(width, height) {
   const canvas = document.createElement('canvas');
   const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false });
@@ -166,18 +188,19 @@ export function createSurface(width, height) {
   mask.width = canvas.width; mask.height = canvas.height;
   const mctx = mask.getContext('2d');
   const hasFilter = 'filter' in mctx;
-  function paint(drawShapes, which, color, blurPx) {
+  function paint(items, drawFeature, colorOf, blurPx) {
     mctx.save();
     mctx.scale(dpr, dpr);
-    mctx.fillStyle = color;
     if (blurPx && hasFilter) mctx.filter = `blur(${blurPx}px)`;
-    else if (blurPx) {                     // older browsers: blur through a shadow cast from off-canvas
-      mctx.shadowColor = color; mctx.shadowBlur = blurPx * 2; mctx.shadowOffsetX = 10000;
-      mctx.translate(-10000, 0);
+    // one fill per colour (water carries a level per neighbourhood)
+    const byColor = new Map();
+    items.forEach(it => { const c = colorOf(it); if (!byColor.has(c)) byColor.set(c, []); byColor.get(c).push(it); });
+    for (const [c, list] of byColor) {
+      mctx.fillStyle = c;
+      mctx.beginPath();
+      list.forEach(it => drawFeature(mctx, it.f));
+      mctx.fill();
     }
-    mctx.beginPath();
-    drawShapes(mctx, which);
-    mctx.fill();
     mctx.restore();
   }
 
@@ -188,14 +211,15 @@ export function createSurface(width, height) {
   return {
     canvas,
     // Rasterise new masks and cross-fade to them over `ms`
-    setMasks(drawShapes, ms, nowMs) {
+    // groups = { water: [{ f, level 0..1 }], fog: [{ f }], land: [{ f }] }; drawFeature(ctx, f) adds f's path
+    setMasks(groups, drawFeature, ms, nowMs) {
       if (lost) return;
       mctx.setTransform(1, 0, 0, 1, 0, 0);
       mctx.clearRect(0, 0, mask.width, mask.height);
       mctx.globalCompositeOperation = 'lighter';
-      paint(drawShapes, 'water', 'rgb(255,0,0)', 0);
-      paint(drawShapes, 'fog', 'rgb(0,255,0)', 2.5);
-      paint(drawShapes, 'land', 'rgb(0,0,255)', 9);
+      paint(groups.water, drawFeature, it => `rgb(${Math.round(255 * Math.max(0.35, Math.min(1, it.level)))},0,0)`, 0);
+      paint(groups.fog, drawFeature, () => 'rgb(0,255,0)', 5);
+      paint(groups.land, drawFeature, () => 'rgb(0,0,255)', 9);
       mctx.globalCompositeOperation = 'source-over';
       [texA, texB] = [texB, texA];          // what was "after" becomes "before"
       gl.bindTexture(gl.TEXTURE_2D, texB);
