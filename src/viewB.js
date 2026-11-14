@@ -20,7 +20,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · reach curves by period, click-to-trace, drowned water · 2026-11-14';
+export const BUILD = 'View B · one fixed set of 30, why line, clearer chart · 2026-11-14';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -810,7 +810,7 @@ export function createViewB(container, data, theme, { width, height }) {
     const a = pts.find(q => q.p === s.thenPeriod), z = pts.find(q => q.p === s.period);
     const change = a && z && a.e && z.e && a.p !== z.p ? ` <span style="font-weight:400;color:${theme.quiet}">· ${d3.format('+.0%')(z.e / a.e - 1)} since ${periodLabel(a.p)}</span>` : '';
     chipHead.html(c ? `What a typical ${s.size} m² home costs in <span style="background:#fff4e8;padding:1px 6px;border-radius:5px">${nameOf(c)}</span>${change}`
-      : `What a typical ${s.size} m² home costs${change} <span style="font-weight:400;color:${theme.quiet}">· click the map for one place</span>`);
+      : `What a typical ${s.size} m² home costs${change}`);
     chips.selectAll('button').data(pts, d => d.p).join(enter => {
       const bEl = enter.append('button').attr('type', 'button').style('font-family', theme.font).style('text-align', 'left')
         .style('padding', '5px 8px 6px').style('border-radius', '8px').style('cursor', 'pointer').style('background', '#ffffff')
