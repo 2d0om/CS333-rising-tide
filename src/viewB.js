@@ -2,14 +2,14 @@
 // Sand is where your budget buys a typical home; water is where it does not, deeper where fewer
 // homes are within reach.
 // Contract: createViewB(container, data, theme, { width, height }) -> { update(state), on(event, handler) }
-// Emits: select, pin, hover, mode, thenPeriod, budget.
+// Emits: select, pin, hover, mode, thenPeriod, period, budget.
 //
 // Design rules for this view:
 //   * Plain words and counts, not percentages of abstractions: "AED 1.2M buys a typical 80 m²
 //     apartment in 26 of 35 neighbourhoods in 2015–17, but only 11 in 2024–26."
-//   * What matters is on screen without hovering: the headline, every neighbourhood's name on the
-//     map, the price ladder (each neighbourhood's typical price then → now against your budget
-//     line), and orange marks on the neighbourhoods that went under. Hover and click add detail.
+//   * What matters is on screen without hovering: the headline, the tide chart (how many of the
+//     neighbourhoods your budget reaches in each period), orange outlines on the neighbourhoods that
+//     went under, and names where they fit. Hover and click add detail (overview first).
 //   * Every colour is exact: one fill per community from its own sales. The coastline runs along
 //     real community borders, never interpolated. Moving water and fog (surface.js) only add light
 //     and texture; names, borders, the coastline and selections stay above them.
@@ -19,7 +19,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · names, price ladder, real water, 3D fog · 2026-11-14';
+export const BUILD = 'View B · tide chart, fair names, budget bar · 2026-11-14';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -38,7 +38,7 @@ const titleCase = s => s.toLowerCase().replace(/(^|[\s(/-])([a-z])/g, (m, a, b) 
 const NOT_ACRONYM = /^(AL|EL|THE|AND|OF|BAY|CITY|PARK|BIN|BU|UMM|ABU|RAS|NAD|NADD|HILL|HILLS|ONE|TWO|NEW|OLD|WEST|EAST)$/;
 const nice = s => s.split(/\s+/).map(w => /^[A-Z]{2,4}$/.test(w) && !NOT_ACRONYM.test(w) ? w
   : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-// Shorter forms for tight spaces (map labels and ladder rows); the full name is in the tooltip
+// Shorter forms for tight spaces (map labels and the price strip); the full name is in the tooltip
 const SHORT = { 'Jumeirah Village Circle': 'JVC', 'Jumeirah Village Triangle': 'JVT', 'Dubai World Central': 'Dubai South',
   'Jumeirah Lake Towers': 'JLT', 'Dubai Investment Park Second': 'DIP 2', 'Dubai Investment Park First': 'DIP 1',
   'DMCC Master Community': 'DMCC' };
@@ -155,8 +155,8 @@ export function createViewB(container, data, theme, { width, height }) {
   const homeWord = () => (cur && cur.homeType === 'villa') ? 'villa' : 'apartment';
 
   // ---------- layout ----------
-  // Wide: map on the left at full height; a panel on the right (headline, which homes, the price
-  // ladder with the budget bar under it). Narrow: the panel goes under the map.
+  // Wide: map on the left at full height; a panel on the right (headline, which homes, your budget,
+  // the tide chart and the selected neighbourhood's prices). Narrow: the panel goes under the map.
   const wide = width >= 900;
   const colGap = 22;
   const panelW = wide ? Math.round(Math.max(360, Math.min(440, width * 0.33))) : width;
@@ -186,15 +186,23 @@ export function createViewB(container, data, theme, { width, height }) {
   const modeNums = modeButtons.append('div').style('font-weight', 400).style('font-size', '11px')
     .style('font-variant-numeric', 'tabular-nums');
 
-  // 3. The price ladder: what a typical home costs in each neighbourhood, then → now, against your budget
-  const ladderHead = panel.append('div').style('min-height', '34px');
-  const ladderTitle = ladderHead.append('div').style('font', `600 ${theme.size.small}px ${theme.font}`);
-  ladderHead.append('div').style('font-size', '11px').style('color', theme.quiet).style('margin-top', '2px').html(
-    `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;border:1.5px solid ${thenColor};vertical-align:-1px"></span> then ` +
-    `→ <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${theme.depth.deep};vertical-align:-1px"></span> now, ` +
-    `filled in its map colour · <span style="color:${theme.accent};font-weight:600">orange</span>: went under · ` +
-    `<span style="color:${theme.ink}">sorted by price now</span>`);
-  const chartBox = panel.append('div');
+  // 3. Your budget: the number, and the bar that sets it
+  const budgetBlock = panel.append('div');
+  const budgetRow = budgetBlock.append('div').style('display', 'flex').style('align-items', 'baseline')
+    .style('gap', '10px').style('flex-wrap', 'wrap');
+  budgetRow.append('span').style('font-size', '11px').style('letter-spacing', '0.06em').style('text-transform', 'uppercase')
+    .style('color', theme.quiet).text('Your budget');
+  const budgetBig = budgetRow.append('span').style('font-size', '24px').style('font-weight', 700)
+    .style('font-variant-numeric', 'tabular-nums').style('line-height', '1.2');
+  const budgetSub = budgetRow.append('span').style('font-size', `${theme.size.small}px`).style('color', theme.quiet);
+  const barBox = budgetBlock.append('div').style('margin-top', '2px');
+
+  // 4. The tide chart: in each period, how many of the neighbourhoods your budget reaches
+  const tideHead = panel.append('div').style('min-height', '32px');
+  const tideTitle = tideHead.append('div').style('font', `600 ${theme.size.small}px ${theme.font}`);
+  const tideSub = tideHead.append('div').style('font-size', '11px').style('color', theme.quiet).style('margin-top', '3px')
+    .style('display', 'flex').style('flex-wrap', 'wrap').style('gap', '2px 12px');
+  const tideBox = panel.append('div');
 
   // ---------- map: data underneath, moving water and fog in the middle, names and lines on top ----------
   const legendH = 50;
@@ -238,6 +246,7 @@ export function createViewB(container, data, theme, { width, height }) {
   const gStations = top.append('g');
   const gMarks = top.append('g');
   const gLabels = top.append('g');
+  const gForced = top.append('g');
 
   gStations.selectAll('circle').data(stations.filter(s => {
     const [x, y] = projection(s.coords); return x >= 0 && x <= mapW && y >= 0 && y <= mapH - legendH;
@@ -250,7 +259,7 @@ export function createViewB(container, data, theme, { width, height }) {
     .style('height', `${legendH}px`).style('background', 'rgba(255,255,255,0.93)').style('border-top', `1px solid ${theme.grid}`)
     .style('display', 'flex').style('align-items', 'center').style('gap', '18px').style('padding', '0 14px')
     .style('font-size', '11.5px').style('line-height', '1.35').style('pointer-events', 'none');
-  const kw = 150;
+  const kw = 118;
   const legScale = legend.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '8px');
   const legSvg = legScale.append('svg').attr('width', kw).attr('height', 30).attr('aria-hidden', true);
   const kg = legSvg.append('defs').append('linearGradient').attr('id', 'vb-key');
@@ -262,6 +271,7 @@ export function createViewB(container, data, theme, { width, height }) {
     legSvg.append('text').attr('x', x).attr('y', 28).attr('text-anchor', a).attr('fill', theme.quiet).style('font-size', '10px').text(t));
   const legText = legScale.append('div');
   const legOther = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '2px');
+  const legNames = legend.append('div').style('color', theme.quiet).style('margin-left', 'auto').style('text-align', 'right');
 
   // How far inland each community lies, to order the tide: a rising sea reaches coastal communities
   // first; a falling one drains inland first. The Gulf is north-west, so inland runs south-east.
@@ -270,8 +280,10 @@ export function createViewB(container, data, theme, { width, height }) {
   const inland = c => inlandScale(inlandRaw.get(c) ?? 0);
 
   // ---------- names on the map ----------
-  // Every neighbourhood with sales gets its name. A label goes inside its shape where it fits (at the
-  // point furthest from the edges); otherwise just outside with a short leader line; labels never overlap.
+  // A fair, stated rule: the neighbourhoods counted in the headline and the tide chart (20+ sales then
+  // and now) are named, busiest first, as long as names do not overlap; any other neighbourhood with
+  // 20+ sales is named only if its name fits inside its own shape. Names sit at the point furthest
+  // from the shape's edges. Selected, hovered and pinned ones are always named.
   const measureCtx = document.createElement('canvas').getContext('2d');
   const textW = (t, px, wt = 600) => { measureCtx.font = `${wt} ${px}px ${theme.font}`; return measureCtx.measureText(t).width; };
   const splitName = t => {
@@ -318,119 +330,122 @@ export function createViewB(container, data, theme, { width, height }) {
     return res;
   }
   let labelKey = null;
-  function placeLabels(s, list) {
-    const key = [s.period, s.mode, s.homeType, s.dropExtremes].join('|');
+  function placeLabels(s) {
+    const key = [s.period, s.thenPeriod, s.mode, s.homeType, s.dropExtremes].join('|');
     if (key === labelKey) return;
     labelKey = key;
-    const placed = [];
-    const overlaps = b => placed.some(p => b.x0 < p.x1 + 2 && b.x1 > p.x0 - 2 && b.y0 < p.y1 + 1 && b.y1 > p.y0 - 1);
-    const inMap = b => b.x0 > 4 && b.x1 < mapW - 4 && b.y0 > 4 && b.y1 < mapH - legendH - 4;
-    const items = list.map(c => {
-      const f = byComm.get(c), a = anchorOf(f);
-      if (!a) return null;
-      const x = a.x, y = a.y;
-      if (x < 0 || x > mapW || y < 0 || y > mapH - legendH) return null;
-      return { c, a, lines: splitName(shortName(nameOf(c))), n: (S.get(c) || {}).n || 0 };
-    }).filter(Boolean);
+    const placed = [], out = [];
+    const overlaps = b => placed.some(p => b.x0 < p.x1 + 3 && b.x1 > p.x0 - 3 && b.y0 < p.y1 + 2 && b.y1 > p.y0 - 2);
     const box = (cx, cy, lines, px) => {
       const w = d3.max(lines, l => textW(l, px)), h = lines.length * px * 1.1;
-      return { x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2, w, h };
+      return { x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2 };
     };
-    const fits = (b, ring) => [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1], [(b.x0 + b.x1) / 2, b.y0], [(b.x0 + b.x1) / 2, b.y1]]
-      .every(p => d3.polygonContains(ring, p));
-    const out = [];
-    // inside first, biggest shapes first
-    items.sort((p, q) => q.a.area - p.a.area).forEach(it => {
-      for (const px of [11, 9.5, 8.5]) {
-        const b = box(it.a.x, it.a.y, it.lines, px);
-        if (fits(b, it.a.ring) && !overlaps(b)) { placed.push(b); out.push({ ...it, px, x: it.a.x, y: it.a.y, inside: true }); return; }
-      }
-      it.outside = true;
-    });
-    // then outside with a leader, busiest first
-    items.filter(it => it.outside).sort((p, q) => q.n - p.n).forEach(it => {
-      const px = 9.5;
-      for (const r of [14, 22, 32, 44]) for (let k = 0; k < 12; k++) {
-        const ang = (k / 12) * 2 * Math.PI + 0.3;
-        const b0 = box(0, 0, it.lines, px);
-        const cx = it.a.x + Math.cos(ang) * (r + b0.w / 2), cy = it.a.y + Math.sin(ang) * (r + b0.h / 2);
-        const b = box(cx, cy, it.lines, px);
-        if (inMap(b) && !overlaps(b)) {
-          placed.push(b);
-          out.push({ ...it, px, x: cx, y: cy, inside: false, lx: it.a.x + Math.cos(ang) * 3, ly: it.a.y + Math.sin(ang) * 3,
-            ex: cx - Math.cos(ang) * (b.w / 2 + 2), ey: cy - Math.sin(ang) * (b.h / 2 + 1) });
-          return;
+    // fits: the label's centre and at least 9 of 10 points around its box lie inside the shape
+    const fits = (b, ring) => {
+      const mx = (b.x0 + b.x1) / 2, my = (b.y0 + b.y1) / 2;
+      if (!d3.polygonContains(ring, [mx, my])) return false;
+      const pts = [[b.x0, b.y0], [mx, b.y0], [b.x1, b.y0], [b.x1, my], [b.x1, b.y1], [mx, b.y1], [b.x0, b.y1], [b.x0, my],
+        [(b.x0 + mx) / 2, my], [(b.x1 + mx) / 2, my]];
+      return pts.filter(p => d3.polygonContains(ring, p)).length >= 9;
+    };
+    features.filter(f => charted(S.get(commOfF(f)))).map(f => ({ c: commOfF(f), a: anchorOf(f), n: S.get(commOfF(f)).n }))
+      .filter(it => it.a && it.a.x > 0 && it.a.x < mapW && it.a.y > 0 && it.a.y < mapH - legendH)
+      .sort((p, q) => (C.set.includes(q.c) - C.set.includes(p.c)) || q.n - p.n)
+      .forEach(it => {
+        const lines = splitName(shortName(nameOf(it.c)));
+        for (const px of [11, 10, 9.5]) {
+          const b = box(it.a.x, it.a.y, lines, px);
+          if (fits(b, it.a.ring) && !overlaps(b)) { placed.push(b); out.push({ ...it, lines, px }); return; }
         }
-      }
-    });
-    const g = gLabels.selectAll('g.lab').data(out, d => d.c).join(enter => {
-      const e = enter.append('g').attr('class', 'lab');
-      e.append('line').attr('stroke', theme.ink).attr('stroke-opacity', 0.45).attr('stroke-width', 0.8);
-      e.append('circle').attr('r', 1.6).attr('fill', theme.ink).attr('fill-opacity', 0.6);
-      e.append('text').attr('text-anchor', 'middle').attr('fill', theme.ink).attr('paint-order', 'stroke')
-        .attr('stroke', '#ffffff').attr('stroke-opacity', 0.9).attr('stroke-linejoin', 'round');
-      return e;
-    });
-    g.select('line').attr('x1', d => d.inside ? null : d.lx).attr('y1', d => d.inside ? null : d.ly)
-      .attr('x2', d => d.inside ? null : d.ex).attr('y2', d => d.inside ? null : d.ey).attr('opacity', d => d.inside ? 0 : 1);
-    g.select('circle').attr('cx', d => d.a.x).attr('cy', d => d.a.y).attr('opacity', d => d.inside ? 0 : 1);
-    g.select('text').attr('x', d => d.x).attr('y', d => d.y - (d.lines.length - 1) * d.px * 0.55)
-      .attr('stroke-width', d => d.px > 10 ? 3 : 2.6).style('font', d => `600 ${d.px}px ${theme.font}`)
+        if (!C.set.includes(it.c)) return;          // counted neighbourhoods: a smaller name, even if it overhangs
+        const b = box(it.a.x, it.a.y, lines, 9);
+        if (!overlaps(b) && b.x0 > 2 && b.x1 < mapW - 2 && b.y1 < mapH - legendH - 2) { placed.push(b); out.push({ ...it, lines, px: 9 }); }
+      });
+    const g = gLabels.selectAll('text.lab').data(out, d => d.c).join(enter => enter.append('text').attr('class', 'lab')
+      .attr('text-anchor', 'middle').attr('fill', theme.ink).attr('paint-order', 'stroke')
+      .attr('stroke', '#ffffff').attr('stroke-opacity', 0.9).attr('stroke-linejoin', 'round').attr('stroke-width', 3));
+    g.attr('x', d => d.a.x).attr('y', d => d.a.y - (d.lines.length - 1) * d.px * 0.55).style('font', d => `600 ${d.px}px ${theme.font}`)
       .selectAll('tspan').data(d => d.lines.map((l, i) => ({ l, i, d }))).join('tspan')
-      .attr('x', t => t.d.x).attr('dy', t => t.i === 0 ? '0.35em' : `${t.d.px * 1.1}px`).text(t => t.l);
+      .attr('x', t => t.d.a.x).attr('dy', t => t.i === 0 ? '0.35em' : `${t.d.px * 1.1}px`).text(t => t.l);
+  }
+  // Names that the rule left out, shown while a neighbourhood is selected, hovered or pinned
+  function forcedLabels(s) {
+    const named = new Set(gLabels.selectAll('text.lab').data().map(d => d.c));
+    const force = [s.selected, s.hovered, ...(s.pinned || [])]
+      .filter((c, i, a) => c && a.indexOf(c) === i && byComm.has(c) && !named.has(c) && anchorOf(byComm.get(c)));
+    gForced.selectAll('text').data(force, c => c).join('text').attr('text-anchor', 'middle').attr('dy', '0.35em')
+      .attr('x', c => anchorOf(byComm.get(c)).x).attr('y', c => anchorOf(byComm.get(c)).y)
+      .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.2)
+      .attr('stroke-linejoin', 'round').style('font', `700 11px ${theme.font}`).text(c => shortName(nameOf(c)));
+    gLabels.selectAll('text.lab').style('font-weight', d => d.c === s.selected ? 800 : 600);
   }
 
-  // ---------- the price ladder + budget bar ----------
-  const CW = panelW;
-  const used = [headline, modeGroup, ladderHead].reduce((t, d) => t + d.node().getBoundingClientRect().height, 0);
-  const LH = Math.max(320, Math.min(760, (wide ? height : 640) - used - 12 * 3 - 4));
-  const ladder = chartBox.append('svg').attr('width', CW).attr('height', LH).style('display', 'block').style('overflow', 'visible');
-  const lm = { l: Math.min(150, Math.round(CW * 0.34)), r: 16, t: 6 };
-  const barY = LH - 40, rowsB = barY - 26;
-  const lx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([lm.l, CW - lm.r]).clamp(true);
-  const ldefs = ladder.append('defs');
-  ldefs.append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
+  // ---------- budget bar ----------
+  // A thin track, the part your budget covers filled, a round handle with a soft shadow. The number
+  // above it is the budget; a small mark shows the budget that reaches as many neighbourhoods now as
+  // yours did then.
+  const CW = panelW, BH = 58, barY = 24;
+  const barSvg = barBox.append('svg').attr('width', CW).attr('height', BH).style('display', 'block').style('overflow', 'visible');
+  const bm = { l: 10, r: 14 };
+  const bx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([bm.l, CW - bm.r]).clamp(true);
+  barSvg.append('defs').append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
     .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
-  const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
-  const gGrid = ladder.append('g').attr('pointer-events', 'none');
-  gGrid.selectAll('line').data(tickVals).join('line').attr('x1', v => lx(v)).attr('x2', v => lx(v))
-    .attr('y1', lm.t).attr('y2', rowsB).attr('stroke', theme.grid).attr('stroke-width', 1);
-  const gRows = ladder.append('g');
-  const divider = ladder.append('g').attr('pointer-events', 'none');
-  divider.append('line').attr('x1', 0).attr('x2', CW).attr('stroke', theme.ink).attr('stroke-opacity', 0.35).attr('stroke-dasharray', '3 3');
-  const divUp = divider.append('text').attr('x', CW).attr('text-anchor', 'end').attr('fill', theme.ink)
-    .style('font', `600 10.5px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
-  const divDown = divider.append('text').attr('x', CW).attr('text-anchor', 'end').attr('fill', theme.depth.deep)
-    .style('font', `600 10.5px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
-  const budgetLine = ladder.append('line').attr('y1', lm.t - 2).attr('y2', barY)
-    .attr('stroke', theme.ink).attr('stroke-opacity', 0.6).attr('stroke-width', 1.2).attr('pointer-events', 'none');
-  const eqMark = ladder.append('g').style('cursor', 'pointer');
-
-  // Budget bar: a thin track, the part your budget covers filled, a round handle with a soft shadow
-  const barHit = ladder.append('rect').attr('x', lm.l - 10).attr('y', barY - 16).attr('width', CW - lm.l - lm.r + 20)
-    .attr('height', 32).attr('fill', 'transparent').style('cursor', 'pointer');
-  ladder.append('text').attr('x', lm.l - 14).attr('y', barY).attr('dy', '0.35em').attr('text-anchor', 'end')
-    .attr('fill', theme.ink).style('font', `600 ${theme.size.small}px ${theme.font}`).text('Your budget');
-  ladder.append('rect').attr('x', lm.l).attr('y', barY - 4).attr('width', CW - lm.l - lm.r).attr('height', 8).attr('rx', 4)
+  const barHit = barSvg.append('rect').attr('x', 0).attr('y', barY - 16).attr('width', CW).attr('height', 32)
+    .attr('fill', 'transparent').style('cursor', 'pointer');
+  barSvg.append('rect').attr('x', bm.l).attr('y', barY - 4).attr('width', CW - bm.l - bm.r).attr('height', 8).attr('rx', 4)
     .attr('fill', '#e3e8ee').attr('pointer-events', 'none');
-  const barFill = ladder.append('rect').attr('x', lm.l).attr('y', barY - 4).attr('height', 8).attr('rx', 4)
+  const barFill = barSvg.append('rect').attr('x', bm.l).attr('y', barY - 4).attr('height', 8).attr('rx', 4)
     .attr('fill', theme.depth.deep).attr('pointer-events', 'none');
-  const tickLabels = ladder.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
-    .attr('x', v => lx(v)).attr('y', barY + 26).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+  barSvg.append('g').attr('pointer-events', 'none').selectAll('text').data([400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6]).join('text')
+    .attr('x', v => bx(v)).attr('y', barY + 26).attr('text-anchor', 'middle').attr('fill', theme.quiet)
     .style('font-size', '10.5px').text(v => short$(v));
-  const knob = ladder.append('g').attr('tabindex', 0).attr('role', 'slider')
+  const eqMark = barSvg.append('g').style('cursor', 'pointer');
+  const knob = barSvg.append('g').attr('tabindex', 0).attr('role', 'slider')
     .attr('aria-label', 'Your budget. Arrow keys change it.')
     .attr('aria-valuemin', BUDGET_MIN).attr('aria-valuemax', BUDGET_MAX).style('cursor', 'grab').style('outline', 'none');
   const knobHalo = knob.append('circle').attr('r', 17).attr('fill', theme.depth.deep).attr('fill-opacity', 0);
   knob.append('circle').attr('r', 10).attr('fill', '#ffffff').attr('stroke', theme.depth.deep)
     .attr('stroke-width', 2.5).attr('filter', 'url(#vb-knob-shadow)');
-  const bubble = knob.append('g').attr('transform', 'translate(0,27)');
-  const bubbleRect = bubble.append('rect').attr('y', -11).attr('height', 22).attr('rx', 11).attr('fill', theme.ink);
-  const bubbleText = bubble.append('text').attr('dy', '0.35em').attr('text-anchor', 'middle').attr('fill', '#ffffff')
-    .style('font', `600 11px ${theme.font}`).style('font-variant-numeric', 'tabular-nums');
   knob.on('mouseenter', () => knobHalo.transition().duration(150).attr('fill-opacity', 0.12))
     .on('mouseleave', () => { if (!dragging) knobHalo.transition().duration(200).attr('fill-opacity', 0); })
     .on('focus', () => knobHalo.attr('fill-opacity', 0.18)).on('blur', () => knobHalo.attr('fill-opacity', 0));
+
+  // ---------- tide chart ----------
+  // A stacked area over the four periods: of the neighbourhoods with 20+ sales in both "then" and
+  // "now", how many your budget reaches (sand), how many it doesn't (water), and how many had too few
+  // sales that period (fog). The line between sand and water is your budget's tide line. It is the
+  // map seen side-on through time: the same counts, every period at once.
+  const stripH = 62;
+  const usedH = [headline, modeGroup, budgetBlock, tideHead].reduce((t, d) => t + d.node().getBoundingClientRect().height, 0);
+  const TH = Math.max(190, Math.min(360, (wide ? height : 640) - usedH - 12 * 4 - stripH - 8));
+  const tideSvg = tideBox.append('svg').attr('width', CW).attr('height', TH + stripH).style('display', 'block').style('overflow', 'visible');
+  const tm = { l: 30, r: 104, t: 18, b: 40 };
+  const tx = d3.scalePoint().domain(PERIOD_KEYS).range([tm.l + 16, CW - tm.r]);
+  const ty = d3.scaleLinear().range([TH - tm.b, tm.t]);
+  const tdefs = tideSvg.append('defs');
+  const tfog = tdefs.append('pattern').attr('id', 'vb-tide-fog').attr('patternUnits', 'userSpaceOnUse')
+    .attr('width', 6).attr('height', 6).attr('patternTransform', 'rotate(45)');
+  tfog.append('rect').attr('width', 6).attr('height', 6).attr('fill', '#f1f3f6');
+  tfog.append('line').attr('y2', 6).attr('stroke', '#c9d0d8').attr('stroke-width', 2);
+  const sandFill = sandRamp(0.45), waterFill = waterRamp(0.35);
+  const colBand = tideSvg.append('rect').attr('y', tm.t - 12).attr('height', TH - tm.t - tm.b + 12 + 30).attr('rx', 6)
+    .attr('fill', '#eef2f6');
+  const gTideGrid = tideSvg.append('g').attr('pointer-events', 'none');
+  const areaSand = tideSvg.append('path').attr('fill', sandFill).attr('pointer-events', 'none');
+  const areaWater = tideSvg.append('path').attr('fill', waterFill).attr('pointer-events', 'none');
+  const areaFog = tideSvg.append('path').attr('fill', 'url(#vb-tide-fog)').attr('pointer-events', 'none');
+  const eqLine = tideSvg.append('path').attr('fill', 'none').attr('stroke', theme.ink).attr('stroke-opacity', 0.7)
+    .attr('stroke-width', 1.4).attr('stroke-dasharray', '5 4').attr('pointer-events', 'none');
+  const tideLine = tideSvg.append('path').attr('fill', 'none').attr('stroke', theme.coastline).attr('stroke-width', 2.6)
+    .attr('stroke-linejoin', 'round').attr('pointer-events', 'none');
+  const gTidePts = tideSvg.append('g').attr('pointer-events', 'none');
+  const gAreaLabels = tideSvg.append('g').attr('pointer-events', 'none');
+  const gAxis = tideSvg.append('g').attr('pointer-events', 'none');
+  const hoverGuide = tideSvg.append('line').attr('y1', tm.t - 6).attr('y2', TH - tm.b).attr('stroke', theme.ink)
+    .attr('stroke-opacity', 0).attr('stroke-dasharray', '2 3').attr('pointer-events', 'none');
+  const gCols = tideSvg.append('g');
+  const eqHit = tideSvg.append('g').style('cursor', 'pointer');
+  const gStrip = tideSvg.append('g').attr('transform', `translate(0,${TH})`);
 
   // ---------- tooltip ----------
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
@@ -446,7 +461,7 @@ export function createViewB(container, data, theme, { width, height }) {
 
   // ---------- state ----------
   let prev = null, cur = null, S = new Map(), Sthen = new Map(), C = null, dragging = false;
-  let flipped = [], rows = [];
+  let flipped = [];
   const lastOut = new Map();
 
   // ---------- interactions ----------
@@ -505,16 +520,16 @@ export function createViewB(container, data, theme, { width, height }) {
     if (pending == null) requestAnimationFrame(() => { const v = pending; pending = null; if (v != null) ev.emit('budget', v); });
     pending = b;
   }
-  const clampX = x => Math.max(lm.l, Math.min(CW - lm.r, x));
-  const atX = x => roundBudget(lx.invert(clampX(x)));
-  const drag = d3.drag().container(ladder.node()).clickDistance(3)
+  const clampX = x => Math.max(bm.l, Math.min(CW - bm.r, x));
+  const atX = x => roundBudget(bx.invert(clampX(x)));
+  const drag = d3.drag().container(barSvg.node()).clickDistance(3)
     .on('start', () => { knobHalo.interrupt().attr('fill-opacity', 0.16); knob.style('cursor', 'grabbing'); })
     .on('drag', e => { if (cur) { dragging = true; sendBudget(atX(e.x), clampX(e.x)); } })
     .on('end', () => {
       knob.style('cursor', 'grab'); knobHalo.transition().duration(250).attr('fill-opacity', 0);
       requestAnimationFrame(() => requestAnimationFrame(() => { dragging = false; if (cur) placeBudget(cur.budget, true); }));
     });
-  barHit.call(drag).on('click', event => { if (cur) ev.emit('budget', atX(d3.pointer(event, ladder.node())[0])); });
+  barHit.call(drag).on('click', event => { if (cur) ev.emit('budget', atX(d3.pointer(event, barSvg.node())[0])); });
   knob.call(drag).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
@@ -569,17 +584,29 @@ export function createViewB(container, data, theme, { width, height }) {
     }
 
     // Neighbourhoods that went under since "then": outlined in orange, always
-    gFlip.selectAll('path').data(flipped, c => c).join('path').attr('d', c => path(byComm.get(c)))
-      .attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.8).attr('stroke-linejoin', 'round');
+    showFlips(flipped);
 
-    placeLabels(s, [...S.keys()].filter(c => byComm.has(c)));
+    placeLabels(s);
     drawHeadline(s, same, animate);
     drawLegend(s, same);
+    if (!dragging) placeBudget(s.budget, animate);
 
     clearTimeout(heavyTimer);
     if (dragging) heavyTimer = setTimeout(() => drawHeavy(s, same), 120);
     else drawHeavy(s, same);
   }
+
+  // Orange outlines: by default the neighbourhoods that went under since "then"; while a period is
+  // hovered in the tide chart, the ones that went under in that step
+  function showFlips(list) {
+    gFlip.selectAll('path').data(list, c => c).join('path').attr('d', c => path(byComm.get(c)))
+      .attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.8).attr('stroke-linejoin', 'round');
+  }
+  const eqBudget = () => {                 // the budget that reaches as many neighbourhoods now as yours did then
+    if (!C || !C.k1 || C.k1 === C.k2 || cur.thenPeriod === cur.period) return NaN;
+    const edges = C.set.map(c => S.get(c).edge).sort(d3.ascending);
+    return ceilBudget(edges[C.k1 - 1]);
+  };
 
   function drawHeadline(s, same, animate) {
     const b = `<strong>${aed(s.budget)}</strong>`;
@@ -587,8 +614,7 @@ export function createViewB(container, data, theme, { width, height }) {
     let html;
     if (same) html = `${b} buys ${home} in <strong>${C.k2}</strong> of ${C.n} neighbourhoods in ${periodLabel(s.period)}.`;
     else {
-      const edges = C.set.map(c => S.get(c).edge).sort(d3.ascending);
-      const eq = C.k1 ? ceilBudget(edges[C.k1 - 1]) : NaN;
+      const eq = eqBudget();
       html = `${b} buys ${home} in <strong>${C.k1}</strong> of ${C.n} neighbourhoods in ${periodLabel(s.thenPeriod)}, ` +
         `${C.k2 < C.k1 ? 'but only' : 'and'} <strong style="color:${theme.depth.deep}">${C.k2}</strong> in ${periodLabel(s.period)}.` +
         (Number.isFinite(eq) && C.k2 !== C.k1
@@ -599,16 +625,25 @@ export function createViewB(container, data, theme, { width, height }) {
       const c2 = m === s.mode && !same ? C : comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
       return same ? `${c2.k2} of ${c2.n}` : `${c2.k1} → ${c2.k2} of ${c2.n}`;
     });
-    ladderTitle.text(`What a typical ${s.size} m² ${homeWord()} costs, by neighbourhood`);
+    budgetBig.text(aed(s.budget));
+    budgetSub.text(`for ${s.size} m² · up to AED ${fmt(s.budget / s.size)} per m²`);
+    tideTitle.text(`How many of the ${C.n} neighbourhoods your budget reaches, period by period`);
+    const sw = (bg, label, extra = '') => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;` +
+      `width:12px;height:10px;border-radius:2px;background:${bg};${extra}"></span>${label}</span>`;
+    tideSub.html(sw(sandFill, 'within reach') + sw(waterFill, 'out of reach') +
+      sw('repeating-linear-gradient(45deg,#c9d0d8 0 2px,#f1f3f6 2px 5px)', 'too few sales') +
+      (Number.isFinite(eqBudget()) ? `<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:16px;` +
+        `border-top:1.5px dashed ${theme.ink}"></span>${aed(eqBudget())}</span>` : ''));
   }
 
   function drawLegend(s, same) {
-    legText.html(`<strong>Sand</strong>: your budget buys a typical home there<br>` +
-      `<strong style="color:${theme.depth.deep}">Water</strong>: it doesn't; deeper = fewer homes within budget`);
+    legText.html(`<strong>Sand</strong>: your budget buys a typical home<br>` +
+      `<strong style="color:${theme.depth.deep}">Water</strong>: it doesn't (deeper = fewer homes)`);
+    legNames.html(`Names: the ${C.n} counted, where<br>they don't overlap · hover for others`);
     legOther.html((same ? '' : `<span><span style="display:inline-block;width:12px;height:10px;border:2px solid ${theme.accent};border-radius:2px;vertical-align:-1px;margin-right:5px"></span>` +
       `<strong>${flipped.length}</strong> went under since ${periodLabel(s.thenPeriod)}</span>`) +
       `<span><span style="display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;background:${surface ? 'radial-gradient(circle at 35% 35%,#ffffff,#b9c3ce)' : `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`}"></span>` +
-      `Fog: under 20 sales, too few to trust</span>`);
+      `Fog: under 20 sales</span>`);
   }
 
   let heavyTimer = null;
@@ -637,127 +672,170 @@ export function createViewB(container, data, theme, { width, height }) {
       })
       .on('click', (event, t) => ev.emit('thenPeriod', t.p));
 
-    drawLadder(s, same);
+    drawTide(s, same, s.budget, !!prev && !dragging);
+    drawStrip(cur);
   }
 
-  // One row per neighbourhood (those with 20+ sales in both periods), sorted by today's typical price.
-  // Hollow dot: then. Filled dot, in the neighbourhood's map colour: now. The budget line runs through
-  // all rows; every row whose filled dot sits left of it is sand on the map.
-  function drawLadder(s, same) {
-    rows = C.set.map(c => ({ c, now: S.get(c).edge, then: same ? null : Sthen.get(c).edge, flip: flipped.includes(c) }))
-      .sort((a, b) => a.now - b.now);
-    const n = rows.length;
-    const rh = (rowsB - lm.t) / Math.max(1, n);
-    const fs = Math.max(8, Math.min(11, rh * 0.82));
-    const yOf = i => lm.t + rh * (i + 0.5);
-    rows.forEach((r, i) => { r.y = yOf(i); });
-    const t = prev && !dragging && !reduceMotion ? d3.transition().duration(500).ease(d3.easeCubicInOut) : null;
+  function tideCounts(s, b) {
+    const st = { ...s, budget: b };
+    return PERIOD_KEYS.map(p => {
+      const Sp = statsFor(p, st);
+      let land = 0, water = 0, fog = 0;
+      C.set.forEach(c => { const x = Sp.get(c); if (!charted(x)) fog++; else if (isLand(x)) land++; else water++; });
+      return { p, land, water, fog, Sp };
+    });
+  }
+  function drawTide(s, same, b = s.budget, animate = false) {
+    const n = C.n;
+    ty.domain([0, Math.max(1, n)]);
+    const rows = tideCounts(s, b);
+    const T = animate && !reduceMotion ? d3.transition().duration(600).ease(d3.easeCubicInOut) : null;
+    const go = sel => T ? sel.interrupt().transition(T) : sel.interrupt();
+    const band = (lo, hi) => d3.area().x(d => tx(d.p)).y0(d => ty(lo(d))).y1(d => ty(hi(d)))(rows);
+    go(areaSand).attr('d', band(() => 0, d => d.land));
+    go(areaWater).attr('d', band(d => d.land, d => d.land + d.water));
+    go(areaFog).attr('d', band(d => d.land + d.water, () => n));
+    go(tideLine).attr('d', d3.line().x(d => tx(d.p)).y(d => ty(d.land))(rows));
 
-    const g = gRows.selectAll('g.row').data(rows, d => d.c).join(enter => {
-      const e = enter.append('g').attr('class', 'row').attr('transform', d => `translate(0,${d.y})`).style('cursor', 'pointer');
-      e.append('rect').attr('class', 'bg').attr('x', 0).attr('width', CW).attr('fill', 'transparent').attr('rx', 3);
-      e.append('text').attr('class', 'nm').attr('x', lm.l - 8).attr('dy', '0.35em').attr('text-anchor', 'end');
-      e.append('line').attr('class', 'lk').attr('stroke-linecap', 'round');
-      e.append('g').attr('class', 'trail');
-      e.append('circle').attr('class', 'th').attr('fill', '#ffffff').attr('stroke', thenColor).attr('stroke-width', 1.4);
-      e.append('circle').attr('class', 'nw').attr('stroke', '#ffffff').attr('stroke-width', 1);
-      e.append('text').attr('class', 'vals').attr('dy', '0.35em').style('font', `600 10px ${theme.font}`)
-        .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3);
-      return e;
-    }, update => update, exit => exit.remove());
-    (t ? g.transition(t) : g).attr('transform', d => `translate(0,${d.y})`);
-    g.select('.bg').attr('y', -rh / 2).attr('height', rh);
-    // names fit their column: shortened with an ellipsis when needed (the full name is in the tooltip)
-    const fitName = t0 => { let t = t0; while (t.length > 4 && textW(t, fs, 400) > lm.l - 12) t = t.slice(0, -2); return t === t0 ? t : `${t.trimEnd()}…`; };
-    g.select('.nm').style('font-size', `${fs}px`).text(d => fitName(shortName(nameOf(d.c))));
-    g.select('.lk').attr('x1', d => d.then == null ? lx(d.now) : lx(d.then)).attr('x2', d => lx(d.now))
-      .attr('stroke', d => d.flip ? theme.accent : '#b9c2cc').attr('stroke-width', d => d.flip ? 2 : 1.3);
-    g.select('.th').attr('cx', d => d.then == null ? -99 : lx(d.then)).attr('r', Math.min(3.4, rh * 0.32))
-      .attr('opacity', d => d.then == null ? 0 : 1);
-    g.select('.nw').attr('cx', d => lx(d.now)).attr('r', Math.min(4.6, rh * 0.42));
-    g.on('mouseenter', (event, d) => { if (cur.hovered !== d.c) ev.emit('hover', d.c); })
-      .on('mousemove', (event, d) => showTip(event, tipForCommunity(d.c)))
-      .on('mouseleave', () => { hideTip(); if (cur.hovered) ev.emit('hover', null); })
-      .on('click', (event, d) => { if (event.shiftKey) ev.emit('pin', d.c); else ev.emit('select', cur.selected === d.c ? null : d.c); });
-    placeBudget(s.budget, !!t);
-    styleRows(cur);
+    // the current period's column, and a light grid of counts
+    const step = tx.step();
+    colBand.attr('x', tx(s.period) - step / 2 + 4).attr('width', step - 8);
+    const yt = ty.ticks(4).filter(v => Number.isInteger(v));
+    gTideGrid.selectAll('line').data(yt).join('line').attr('x1', tm.l).attr('x2', CW - tm.r + 8)
+      .attr('y1', v => ty(v)).attr('y2', v => ty(v)).attr('stroke', '#ffffff').attr('stroke-opacity', 0.55);
+    gTideGrid.selectAll('text').data(yt).join('text').attr('x', tm.l - 6).attr('y', v => ty(v)).attr('dy', '0.35em')
+      .attr('text-anchor', 'end').attr('fill', theme.quiet).style('font-size', '10.5px').text(v => v);
+
+    // counts on the tide line, one per period
+    const pts = gTidePts.selectAll('g').data(rows, d => d.p).join(enter => {
+      const g = enter.append('g');
+      g.append('circle').attr('r', 4.5).attr('fill', '#ffffff').attr('stroke', theme.coastline).attr('stroke-width', 2);
+      g.append('text').attr('text-anchor', 'middle').attr('paint-order', 'stroke').attr('stroke', '#ffffff')
+        .attr('stroke-width', 3.5).attr('stroke-linejoin', 'round');
+      return g;
+    });
+    go(pts).attr('transform', d => `translate(${tx(d.p)},${ty(d.land)})`);
+    pts.select('text').attr('y', -10).attr('fill', theme.ink)
+      .style('font', d => `${d.p === s.period ? 800 : 700} ${d.p === s.period ? 14 : 12.5}px ${theme.font}`).text(d => d.land);
+
+    // area names at the right edge, inside each band when there is room
+    const last = rows[rows.length - 1], xr = tx(last.p) + 10;
+    const lab = [];
+    if (last.land && ty(0) - ty(last.land) > 13) lab.push({ y: ty(last.land / 2), t: `${last.land} within reach`, c: theme.ink });
+    if (last.water && ty(last.land) - ty(last.land + last.water) > 13) lab.push({ y: ty(last.land + last.water / 2), t: `${last.water} out of reach`, c: theme.depth.deep });
+    gAreaLabels.selectAll('text').data(lab).join('text').attr('x', xr).attr('y', d => d.y).attr('dy', '0.35em')
+      .attr('fill', d => d.c).style('font', `600 11px ${theme.font}`).text(d => d.t);
+
+    // x axis: the four periods, with "then" and "now" tags
+    const ax = gAxis.selectAll('g').data(PERIOD_KEYS).join(enter => {
+      const g = enter.append('g');
+      g.append('text').attr('class', 'p').attr('text-anchor', 'middle');
+      g.append('text').attr('class', 'tag').attr('text-anchor', 'middle').style('font-size', '10px');
+      return g;
+    }).attr('transform', p => `translate(${tx(p)},${TH - tm.b + 16})`);
+    ax.select('.p').attr('fill', p => p === s.period ? theme.ink : theme.quiet)
+      .style('font', p => `${p === s.period ? 700 : 400} 11px ${theme.font}`).text(p => periodLabel(p));
+    ax.select('.tag').attr('y', 13).attr('fill', p => p === s.period ? theme.ink : theme.quiet)
+      .text(p => p === s.period ? 'now (on the map)' : (!same && p === s.thenPeriod) ? 'then' : '');
+
+    // dashed: the budget that reaches as many now as yours did then, across all four periods
+    const eq = eqBudget();
+    eqHit.selectAll('*').remove();
+    if (Number.isFinite(eq) && !dragging) {
+      const er = tideCounts(s, eq);
+      go(eqLine).attr('d', d3.line().x(d => tx(d.p)).y(d => ty(d.land))(er)).attr('opacity', 1);
+      // labelled where it matters: at the period on the map, where it meets "then"'s count
+      const le = er.find(d => d.p === s.period), atEnd = s.period === PERIOD_KEYS[PERIOD_KEYS.length - 1];
+      eqHit.on('click', () => ev.emit('budget', eq)).append('title').text(`Set your budget to ${aed(eq)}`);
+      eqHit.append('text').attr('x', tx(le.p) + (atEnd ? 10 : 0)).attr('y', ty(le.land) - (atEnd ? 8 : 12))
+        .attr('text-anchor', atEnd ? 'start' : 'middle').attr('fill', theme.ink)
+        .style('font', `600 10.5px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
+        .text(`${short$(eq)} reaches ${le.land} ›`);
+    } else if (!Number.isFinite(eq)) eqLine.attr('opacity', 0);
+
+    // period columns: hover previews that period on the map, click shows it
+    gCols.selectAll('rect').data(rows, d => d.p).join('rect').attr('x', d => tx(d.p) - step / 2).attr('width', step)
+      .attr('y', tm.t - 12).attr('height', TH - tm.t - tm.b + 40).attr('fill', 'transparent')
+      .style('cursor', d => d.p === s.period ? 'default' : 'pointer')
+      .on('mouseenter', (event, d) => hoverPeriod(d, rows, true))
+      .on('mousemove', (event, d) => showTip(event, periodTip(d, rows)))
+      .on('mouseleave', (event, d) => { hoverPeriod(d, rows, false); hideTip(); })
+      .on('click', (event, d) => { hideTip(); hoverPeriod(d, rows, false); if (d.p !== cur.period) ev.emit('period', d.p); });
+  }
+  const stepChanges = (d, rows) => {
+    const i = rows.findIndex(r => r.p === d.p);
+    if (i < 1) return { under: [], back: [] };
+    const P0 = rows[i - 1].Sp, P1 = d.Sp;
+    return { prev: rows[i - 1].p, under: C.set.filter(c => isLand(P0.get(c)) && isWater(P1.get(c))),
+      back: C.set.filter(c => isWater(P0.get(c)) && isLand(P1.get(c))) };
+  };
+  const listNames = list => { const nm = list.map(c => shortName(nameOf(c))); return nm.length > 4 ? `${nm.slice(0, 4).join(', ')} and ${nm.length - 4} more` : nm.join(', '); };
+  function periodTip(d, rows) {
+    const ch = stepChanges(d, rows);
+    return `<strong>${periodLabel(d.p)}</strong>: <strong>${d.land}</strong> within reach · ${d.water} out of reach` +
+      (d.fog ? ` · ${d.fog} too few sales` : '') +
+      (ch.under.length ? `<br><span style="color:${theme.accent};font-weight:600">Went under since ${periodLabel(ch.prev)}:</span> ${listNames(ch.under)}` : '') +
+      (ch.back.length ? `<br>Came back within reach: ${listNames(ch.back)}` : '') +
+      `<br><span style="color:${theme.quiet}">${d.p === cur.period ? 'This period is on the map.' : 'Its coastline is dashed on the map. Click to show it.'}</span>`;
+  }
+  function hoverPeriod(d, rows, on) {
+    hoverGuide.attr('x1', tx(d.p)).attr('x2', tx(d.p)).attr('stroke-opacity', on ? 0.5 : 0);
+    if (on) { if (d.p !== cur.period) preview(d.Sp); showFlips(stepChanges(d, rows).under); }
+    else { endPreview(); showFlips(flipped); }
   }
 
-  // Budget line, handle, the divider between "within reach" and "out of reach", and the "reach again" mark
+  // Budget bar, handle, the big number, and the "reach again" mark; while dragging, the tide redraws live
   function placeBudget(b, animate, xOverride) {
     if (!cur || !C) return;
-    const x = xOverride ?? lx(b);
+    const x = xOverride ?? bx(b);
     const t = animate && !reduceMotion ? d3.transition().duration(450).ease(d3.easeCubicOut) : null;
     const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
-    go(budgetLine).attr('x1', x).attr('x2', x);
-    go(barFill).attr('width', Math.max(0, x - lm.l));
+    go(barFill).attr('width', Math.max(0, x - bm.l));
     go(knob).attr('transform', `translate(${x},${barY})`);
-    const label = aed(b);
-    const w = label.length * 6.6 + 22;
-    bubbleText.text(label);
-    bubbleRect.attr('x', -w / 2).attr('width', w);
-    tickLabels.attr('opacity', v => Math.abs(lx(v) - x) < w / 2 + 14 ? 0 : 1);
-    knob.attr('aria-valuenow', b).attr('aria-valuetext', label);
+    knob.attr('aria-valuenow', b).attr('aria-valuetext', aed(b));
+    budgetBig.text(aed(b));
+    budgetSub.text(`for ${cur.size} m² · up to AED ${fmt(b / cur.size)} per m²`);
+    if (xOverride != null) drawTide(cur, cur.thenPeriod === cur.period, b, false);
 
-    // Now-dots take the colour each neighbourhood has on the map at this budget
-    const st = { ...cur, budget: b };
-    const Snow = dragging ? statsFor(cur.period, st) : S;
-    gRows.selectAll('g.row').select('.nw').attr('fill', d => depthColor(outOf(Snow.get(d.c))));
-    const k = rows.filter(r => isLand(Snow.get(r.c))).length, n = rows.length;
-    const rh = (rowsB - lm.t) / Math.max(1, n), yDiv = lm.t + rh * k;
-    go(divider).attr('transform', `translate(0,${yDiv})`);
-    divider.select('line').attr('opacity', k > 0 && k < n ? 1 : 0);
-    divUp.attr('y', -4).text(k ? `↑ ${k} within reach` : '');
-    divDown.attr('y', 12).text(n - k ? `↓ ${n - k} out of reach` : '');
-
-    // A small mark on the bar: the budget that reaches as many neighbourhoods now as yours did then
     eqMark.selectAll('*').remove();
-    if (cur.thenPeriod !== cur.period && C.k1 && C.k1 !== C.k2) {
-      const edges = rows.map(r => r.now).sort(d3.ascending);
-      const eq = ceilBudget(edges[C.k1 - 1]);
-      const ex = lx(eq);
+    const eq = eqBudget();
+    if (Number.isFinite(eq)) {
+      const ex = bx(eq);
       eqMark.on('click', () => ev.emit('budget', eq)).append('title').text(`Set your budget to ${aed(eq)}`);
-      eqMark.append('path').attr('d', `M${ex},${barY - 7}l-5,-8h10z`).attr('fill', '#ffffff').attr('stroke', theme.depth.deep).attr('stroke-width', 1.5);
-      if (Math.abs(ex - x) > 40) eqMark.append('text').attr('x', ex).attr('y', barY - 19).attr('text-anchor', 'middle')
-        .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
-        .style('font', `600 10px ${theme.font}`).text(`${short$(eq)}: as many as ${periodLabel(cur.thenPeriod)}`);
+      eqMark.append('path').attr('d', `M${ex},${barY - 7}l-5,-8h10z`).attr('fill', '#ffffff')
+        .attr('stroke', theme.ink).attr('stroke-width', 1.4);
+      if (Math.abs(ex - x) > 30) eqMark.append('text').attr('x', ex).attr('y', barY - 18).attr('text-anchor', 'middle')
+        .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
+        .style('font', `600 10px ${theme.font}`).text(`${short$(eq)} reaches as many as in ${periodLabel(cur.thenPeriod)}`);
     }
   }
 
-  // Selected and hovered rows: highlighted; the selected one also shows its prices and all four periods
-  function styleRows(s) {
+  // The selected (or hovered) neighbourhood under the chart: its typical price in each period,
+  // each cell in the colour that neighbourhood has on the map in that period
+  function drawStrip(s) {
     if (!s) return;
-    const n = rows.length, rh = (rowsB - lm.t) / Math.max(1, n);
-    const g = gRows.selectAll('g.row');
-    g.select('.bg').attr('fill', d => d.c === s.selected ? '#fff4e8' : d.c === s.hovered ? '#f1f4f8' : 'transparent');
-    g.select('.nm').attr('fill', d => d.c === s.selected ? theme.ink : d.flip ? theme.ink : '#4a5866')
-      .style('font-weight', d => d.c === s.selected || d.c === s.hovered ? 700 : 400);
-    g.select('.vals').text(d => {
-      if (d.c !== s.selected) return '';
-      return d.then == null ? short$(d.now) : `${short$(d.then)} → ${short$(d.now)} (${d3.format('+.0%')(d.now / d.then - 1)})`;
-    }).attr('x', d => {
-      const right = Math.max(lx(d.now), d.then == null ? 0 : lx(d.then));
-      return right + 8 + 120 < CW ? right + 8 : Math.min(lx(d.now), d.then == null ? 1e9 : lx(d.then)) - 8;
-    }).attr('text-anchor', d => {
-      const right = Math.max(lx(d.now), d.then == null ? 0 : lx(d.then));
-      return right + 8 + 120 < CW ? 'start' : 'end';
-    }).attr('fill', theme.ink);
-    // the selected neighbourhood's four periods, as a faint trail with small year marks
-    g.select('.trail').each(function (d) {
-      const tr = d3.select(this);
-      tr.selectAll('*').remove();
-      if (d.c !== s.selected) return;
-      const pts = PERIOD_KEYS.map(p => ({ p, st: statsFor(p, s).get(d.c) })).filter(q => charted(q.st));
-      tr.append('path').attr('d', d3.line()(pts.map(q => [lx(q.st.edge), 0]))).attr('stroke', theme.quiet)
-        .attr('stroke-opacity', 0.5).attr('fill', 'none');
-      pts.forEach(q => {
-        tr.append('circle').attr('cx', lx(q.st.edge)).attr('r', 1.8).attr('fill', theme.quiet);
-        tr.append('text').attr('x', lx(q.st.edge)).attr('y', -rh / 2 + 1).attr('text-anchor', 'middle')
-          .attr('fill', theme.quiet).style('font-size', '8.5px').text(`'${q.p.slice(2, 4)}`);
-      });
+    gStrip.selectAll('*').remove();
+    const c = s.hovered || s.selected;
+    if (!c || !byComm.has(c)) {
+      gStrip.append('text').attr('x', CW / 2).attr('y', 34).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+        .style('font-size', `${theme.size.small}px`).text('Hover or click a neighbourhood to see its typical price in each period');
+      return;
+    }
+    gStrip.append('text').attr('x', 0).attr('y', 12).attr('fill', theme.ink).style('font', `700 ${theme.size.small}px ${theme.font}`)
+      .text(`${nameOf(c)}`).append('tspan').attr('fill', theme.quiet).style('font-weight', 400)
+      .text(` · typical ${s.size} m² ${homeWord()} in each period`);
+    const w = Math.min(tx.step() - 8, 92);
+    PERIOD_KEYS.forEach(p => {
+      const st = statsFor(p, s).get(c);
+      const ok = charted(st), out = ok ? outOf(st) : 0;
+      const g = gStrip.append('g').attr('transform', `translate(${tx(p)},38)`);
+      g.append('rect').attr('x', -w / 2).attr('y', -13).attr('width', w).attr('height', 26).attr('rx', 6)
+        .attr('fill', !st ? noSales : !ok ? 'url(#vb-tide-fog)' : depthColor(out))
+        .attr('stroke', p === s.period ? theme.ink : 'none').attr('stroke-width', 1.5);
+      g.append('text').attr('text-anchor', 'middle').attr('dy', '0.35em')
+        .attr('fill', ok && out > 0.62 ? '#ffffff' : theme.ink).style('font', `700 11.5px ${theme.font}`)
+        .text(!st ? 'no sales' : !ok ? `${st.n} sales` : aed(st.edge).replace('AED ', ''));
     });
-    // labels on the map: the selected one in bold
-    gLabels.selectAll('g.lab text').style('font-weight', d => d.c === s.selected ? 800 : 600);
   }
 
   function drawMarks(s) {
@@ -779,7 +857,8 @@ export function createViewB(container, data, theme, { width, height }) {
       .attr('d', m => path(byComm.get(m.c))).attr('fill', 'none').attr('stroke', theme.ink)
       .attr('stroke-width', m => m.kind === 'selected' ? 3 : m.kind === 'hovered' ? 2 : 1.6)
       .attr('stroke-dasharray', m => m.kind === 'pinned' ? '4 3' : null);
-    styleRows(s);
+    drawStrip(s);
+    forcedLabels(s);
   }
 
   // ---------- the moving water and fog ----------
