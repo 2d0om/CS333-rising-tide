@@ -121,11 +121,16 @@ export function createViewB(container, data, theme, { width, height }) {
   const isLand = st => charted(st) && st.shareWithin >= 0.5;
   const isWater = st => charted(st) && st.shareWithin < 0.5;
 
-  function comparable(S1, S2) {            // like-for-like: 20+ sales in both periods
-    const both = [...S2.keys()].filter(c => charted(S2.get(c)) && charted(S1.get(c)));
-    const land = S => both.filter(c => isLand(S.get(c)));
-    return { set: both, n: both.length, k1: land(S1).length, k2: land(S2).length,
-      land1: both.length ? land(S1).length / both.length : NaN, land2: both.length ? land(S2).length / both.length : NaN };
+  // The counted set: neighbourhoods with 20+ sales in EVERY period (30 at the defaults). One fixed
+  // set means every count is "of 30" in every period, and a neighbourhood can never drop out of a
+  // period's count just because it had too few sales that period (which looks like a price change
+  // but is not). The team's two-period like-for-like rule gives 35 for 2015–17 vs 2024–26.
+  function reach(s) {
+    const all = PERIOD_KEYS.map(p => statsFor(p, s));
+    const set = [...all[0].keys()].filter(c => all.every(Sp => charted(Sp.get(c))));
+    const S1 = statsFor(s.thenPeriod, s), S2 = statsFor(s.period, s);
+    const k1 = set.filter(c => isLand(S1.get(c))).length, k2 = set.filter(c => isLand(S2.get(c))).length;
+    return { set, n: set.length, k1, k2, land1: set.length ? k1 / set.length : NaN, land2: set.length ? k2 / set.length : NaN };
   }
 
   // Frame the map on the communities that can be compared over time (charted in the first and last period).
@@ -172,7 +177,7 @@ export function createViewB(container, data, theme, { width, height }) {
     .style('flex-direction', 'column').style('gap', '12px').style('min-width', '0');
 
   // 1. The finding: two big numbers and one short line
-  const headline = panel.append('div').style('min-height', '70px');
+  const headline = panel.append('div').style('min-height', '104px');
 
   // 2. Which homes; each option shows its own then → now count
   const modeGroup = panel.append('div').attr('role', 'group').attr('aria-label', 'Which homes')
@@ -526,8 +531,7 @@ export function createViewB(container, data, theme, { width, height }) {
     S = statsFor(s.period, s);
     Sthen = statsFor(s.thenPeriod, s);
     const same = s.thenPeriod === s.period;
-    C = same ? (() => { const set = [...S.keys()].filter(c => charted(S.get(c))); const k = set.filter(c => isLand(S.get(c))).length;
-      return { set, n: set.length, k1: k, k2: k, land1: k / set.length, land2: k / set.length }; })() : comparable(Sthen, S);
+    C = reach(s);
     flipped = same ? [] : C.set.filter(c => isLand(Sthen.get(c)) && isWater(S.get(c)));
 
     // Fills: exact colours. A deliberate change arrives as a tide; a drag follows the hand.
@@ -602,11 +606,26 @@ export function createViewB(container, data, theme, { width, height }) {
         `<span style="font-size:26px;color:${theme.quiet}">→</span>${big(C.k2, theme.depth.deep)}` +
         `<span style="font-size:${theme.size.label + 1}px">of ${C.n} neighbourhoods</span></div>` +
         `<div style="font-size:${theme.size.small}px;color:${theme.quiet};margin-top:6px">${what} · ${periodLabel(s.thenPeriod)} → ${periodLabel(s.period)}</div>`);
+    // Why: computed from the same sales. What is being sold changed (more off-plan), and off-plan
+    // costs more than resale in the same neighbourhood. Shown only when the data supports it.
+    let why = '';
+    if (!same && s.mode === 'all' && C.k2 < C.k1) {
+      const cnt = (p, m) => { const mp = pricesBy(p, { ...s, mode: m }); return d3.sum(C.set, c => (mp.get(c) || []).length); };
+      const share = p => cnt(p, 'offplan') / Math.max(1, cnt(p, 'offplan') + cnt(p, 'ready'));
+      const off = pricesBy(s.period, { ...s, mode: 'offplan' }), rdy = pricesBy(s.period, { ...s, mode: 'ready' });
+      const prem = d3.median(C.set.filter(c => (off.get(c) || []).length >= R.MIN_SALES && (rdy.get(c) || []).length >= R.MIN_SALES),
+        c => d3.quantileSorted(off.get(c), 0.5) / d3.quantileSorted(rdy.get(c), 0.5));
+      const a = share(s.thenPeriod), z = share(s.period);
+      if (z - a >= 0.05 && prem >= 1.1) why = `<div style="font-size:${theme.size.small}px;line-height:1.45;margin-top:6px">` +
+        `<strong>Why so sharp?</strong> New launches. ${Math.round(z * 10)} in 10 homes sold are now off-plan (${Math.round(a * 10)} in 10 in ${periodLabel(s.thenPeriod)}), ` +
+        `at about ${d3.format('.1f')(prem)}× the resale price next door.</div>`;
+    }
+    headline.html(headline.html() + why);
     modeNums.text(m => {
-      const c2 = m === s.mode && !same ? C : comparable(statsFor(s.thenPeriod, { ...s, mode: m }), statsFor(s.period, { ...s, mode: m }));
+      const c2 = m === s.mode ? C : reach({ ...s, mode: m });
       return same ? `${c2.k2} of ${c2.n}` : `${c2.k1} → ${c2.k2} of ${c2.n}`;
     });
-    chartHead.html(`Neighbourhoods each budget reaches <span style="font-weight:400;color:${theme.quiet}">· one line per period · click the map to trace one</span>`);
+    chartHead.html(`How many neighbourhoods a budget opens up <span style="font-weight:400;color:${theme.quiet}">· one line per period</span>`);
   }
 
   function drawLegend(s, same) {
@@ -660,7 +679,7 @@ export function createViewB(container, data, theme, { width, height }) {
       return { p, pts, edges, Sp };
     }).filter(d => d.edges.length);
     const role = p => p === s.period ? 'now' : (!same && p === s.thenPeriod) ? 'then' : 'other';
-    const widthOf = d => ({ now: 3, then: 2.2, other: 1.4 })[role(d.p)];
+    const widthOf = d => ({ now: 3, then: 2.4, other: 1.1 })[role(d.p)];
 
     const yt = cy.ticks(4).filter(Number.isInteger);
     gGrid.selectAll('line').data(yt).join('line').attr('x1', cm.l).attr('x2', CW - cm.r)
@@ -731,7 +750,7 @@ export function createViewB(container, data, theme, { width, height }) {
       go(g.select('circle')).attr('cx', x).attr('cy', cy(d.v)).attr('fill', pcol(d.p));
       go(g.select('text')).attr('x', leftSide ? x - 10 : x + 10).attr('y', ys[i]);
       g.select('text').attr('text-anchor', leftSide ? 'end' : 'start').attr('fill', d.k === 'now' ? theme.depth.deep : '#5f6f80')
-        .text(`${d.v} in ${periodLabel(d.p)}`);
+        .text(`${periodLabel(d.p)}: ${d.v}`);
     });
 
     // the arrow: how much more money reaches as many neighbourhoods now as your budget did then
@@ -751,7 +770,7 @@ export function createViewB(container, data, theme, { width, height }) {
             .attr('text-anchor', more ? (fitsRight ? 'start' : 'end') : 'end')
             .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
             .style('font', `700 ${theme.size.small}px ${theme.font}`)
-            .text(`${more ? '+' : '−'}${aed(Math.abs(eq - b))} for the same ${k}`);
+            .text(more ? `${aed(eq - b)} more to open the same ${k}` : `${aed(b - eq)} less opens the same ${k}`);
         }
       }
     }
@@ -774,6 +793,7 @@ export function createViewB(container, data, theme, { width, height }) {
     band.attr('fill-opacity', c ? 0.07 : 0.14);
     gEq.attr('opacity', c ? 0 : 1).attr('pointer-events', c ? 'none' : null);   // the trace has the floor
     gTrace.selectAll('*').remove();
+    if (!c) { onChart.length = 0; }           // nothing clicked: no trace on the chart, the chips carry the typical price
     gTrace.append('path').attr('d', d3.line()(onChart.map(q => [cx(q.e), cy(q.k)]))).attr('fill', 'none')
       .attr('stroke', c ? theme.ink : theme.quiet).attr('stroke-width', c ? 2.4 : 1.2).attr('stroke-dasharray', c ? null : '2 3')
       .attr('stroke-linejoin', 'round');
@@ -789,8 +809,8 @@ export function createViewB(container, data, theme, { width, height }) {
     // chips: the four periods in time order; the price is the traced neighbourhood's
     const a = pts.find(q => q.p === s.thenPeriod), z = pts.find(q => q.p === s.period);
     const change = a && z && a.e && z.e && a.p !== z.p ? ` <span style="font-weight:400;color:${theme.quiet}">· ${d3.format('+.0%')(z.e / a.e - 1)} since ${periodLabel(a.p)}</span>` : '';
-    chipHead.html(c ? `Typical ${s.size} m² price in <span style="background:#fff4e8;padding:1px 6px;border-radius:5px">${nameOf(c)}</span>${change}`
-      : `Typical ${s.size} m² price, middle neighbourhood${change}`);
+    chipHead.html(c ? `What a typical ${s.size} m² home costs in <span style="background:#fff4e8;padding:1px 6px;border-radius:5px">${nameOf(c)}</span>${change}`
+      : `What a typical ${s.size} m² home costs${change} <span style="font-weight:400;color:${theme.quiet}">· click the map for one place</span>`);
     chips.selectAll('button').data(pts, d => d.p).join(enter => {
       const bEl = enter.append('button').attr('type', 'button').style('font-family', theme.font).style('text-align', 'left')
         .style('padding', '5px 8px 6px').style('border-radius', '8px').style('cursor', 'pointer').style('background', '#ffffff')
@@ -888,6 +908,6 @@ export function createViewB(container, data, theme, { width, height }) {
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
-    _debug: s => ({ comparable: comparable(statsFor(s.thenPeriod, s), statsFor(s.period, s)) })
+    _debug: s => ({ comparable: reach(s) })
   };
 }
