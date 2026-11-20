@@ -1,7 +1,8 @@
 // src/viewB.js — View B, "The Sea" (Member 2)
 // Sand is where your budget buys a typical home; water is where it does not, deeper where fewer
 // homes are within reach.
-// Contract: createViewB(container, data, theme, { width, height }) -> { update(state), on(event, handler) }
+// Contract: createViewB(container, data, theme, { width, height, guessFirst? }) -> { update(state), on(event, handler) }
+// Opens with "draw your guess" (AED 1M, 80 m², 2015–26) over the panel; guessFirst: false skips it.
 // Emits: select, pin, hover, mode, thenPeriod, period, budget.
 //
 // Design rules for this view:
@@ -20,7 +21,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · one fixed set of 30, why line, clearer chart · 2026-11-14';
+export const BUILD = 'View B · draw your guess first, then the map · 2026-11-20';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -54,7 +55,7 @@ function rewound(f) {
   return g;
 }
 
-export function createViewB(container, data, theme, { width, height }) {
+export function createViewB(container, data, theme, { width, height, guessFirst = true }) {
   const ev = emitter();
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = d3.select(container).style('position', 'relative').style('font-family', theme.font)
@@ -893,21 +894,230 @@ export function createViewB(container, data, theme, { width, height }) {
   }).observe(mapBox.node());
 
   const DATA_KEYS = ['period', 'thenPeriod', 'mode', 'homeType', 'money', 'dropExtremes', 'budget', 'size'];
+  function apply(s) {
+    cur = s;
+    const dataChanged = !prev || DATA_KEYS.some(k => prev[k] !== s[k]);
+    if (dataChanged) drawData(s, !!prev && !dragging);
+    const pinsChanged = !prev || (prev.pinned || []).join() !== (s.pinned || []).join();
+    if (dataChanged || prev.selected !== s.selected || prev.hovered !== s.hovered || pinsChanged ||
+        prev.highlight !== s.highlight) drawMarks(s);
+    if (!dataChanged && prev.selected !== s.selected) drawTrace(s);     // the chart changes on click, never on hover
+    prev = s;
+  }
+
+  // ---------- your guess first ----------
+  // Before the map, the reader draws what happened to one fixed budget: AED 1 million, a typical
+  // 80 m² apartment, the same 30 neighbourhoods. The 2015–17 point is given; they draw the rest.
+  // Most people draw a steady fall. The data says the opposite first: homes got cheaper until 2020,
+  // so the budget reached MORE neighbourhoods (16 → 19), and then 16 went under in one period (→ 3).
+  // On "Show me" the real line draws period by period and the map's tide follows it, so the eye moves
+  // from the guess to the map. Until the reader leaves the scene the view shows the scene, not the
+  // shared state; leaving via "Explore" sends the scene's budget so the map continues from what they
+  // just watched. "Skip" leaves without changing anything. Nothing about the map's numbers is hidden
+  // for long: one click skips.
+  const G = { budget: 1e6, size: 80, mode: 'all', homeType: 'apartment', money: 'nominal', dropExtremes: false };
+  const P = PERIOD_KEYS, L = P.length - 1;
+  const Gset = reach({ ...G, period: P[L], thenPeriod: P[0] }).set, gn = Gset.length;
+  const GS = P.map(p => statsFor(p, G));
+  const truth = GS.map(Sp => Gset.filter(c => isLand(Sp.get(c))).length);
+  const typicalG = GS.map(Sp => d3.median(Gset, c => Sp.get(c).edge));
+  const underLast = Gset.filter(c => isLand(GS[L - 1].get(c)) && isWater(GS[L].get(c))).length;
+  let external = null, override = null;
+  let phase = guessFirst && gn && L >= 2 ? 'draw' : 'off';
+  const effective = s => override ? { ...s, ...override, selected: null, hovered: null, pinned: [], highlight: null } : s;
+
+  panel.style('position', 'relative');
+  const gx = panel.append('div').attr('role', 'region').attr('aria-label', 'Draw your guess before the map')
+    .style('position', 'absolute').style('inset', '0').style('z-index', 2).style('background', '#ffffff')
+    .style('display', 'none').style('flex-direction', 'column').style('gap', '8px').style('transition', 'opacity .45s');
+  const under = panel.selectAll(':scope > div').filter(function () { return this !== gx.node(); });
+  if (phase === 'draw') {
+    gx.style('display', 'flex');
+    mapBox.style('transition', 'opacity .8s').style('opacity', 0.45).style('pointer-events', 'none');
+    under.style('visibility', 'hidden');     // shadows and the budget bubble reach past the panel's edge
+    override = { ...G, period: P[0], thenPeriod: P[0] };
+  }
+  gx.append('div').style('font', `700 11px ${theme.font}`).style('letter-spacing', '0.08em').style('text-transform', 'uppercase')
+    .style('color', theme.accent).text('Before the map: your guess');
+  gx.append('div').style('font', `800 23px/1.15 ${theme.font}`).style('margin-top', '-2px')
+    .text(`What could AED ${d3.format('~g')(G.budget / 1e6)} million buy?`);
+  const yearsAhead = R.PERIODS[P[L]][1] - R.PERIODS[P[1]][0] + 1;
+  gx.append('div').style('font-size', `${theme.size.label + 0.5}px`).style('line-height', '1.45').style('color', theme.ink)
+    .html(`A typical ${G.size} m² apartment in <strong>${truth[0]}</strong> of ${gn} neighbourhoods in ${periodLabel(P[0])}. ` +
+      `<strong>Draw the next ${yearsAhead} years.</strong>`);
+
+  const panelH = wide ? height : 620;
+  const usedTop = d3.sum(gx.selectAll(':scope > div').nodes(), n => n.getBoundingClientRect().height) + 2 * 8 || 110;
+  const GW = panelW, GH = Math.max(210, Math.min(400, panelH - usedTop - 80 - 44 - 8 * 4));
+  const gm = { l: 28, r: 46, t: 24, b: 30 };
+  const gsvg = gx.append('svg').attr('width', GW).attr('height', GH).style('display', 'block')
+    .style('touch-action', 'none').style('overflow', 'visible').style('user-select', 'none');
+  const gX = d3.scalePoint().domain(P).range([gm.l + 16, GW - gm.r]);
+  const gY = d3.scaleLinear().domain([0, gn]).range([GH - gm.b, gm.t]);
+  const xy = (i, v) => [gX(P[i]), gY(v)];
+  const gyt = gY.ticks(3).filter(Number.isInteger);
+  gsvg.append('g').selectAll('line').data(gyt).join('line').attr('x1', gm.l).attr('x2', GW - gm.r + 14)
+    .attr('y1', v => gY(v)).attr('y2', v => gY(v)).attr('stroke', theme.grid);
+  gsvg.append('g').selectAll('text').data(gyt).join('text').attr('x', gm.l - 6).attr('y', v => gY(v)).attr('dy', '0.35em')
+    .attr('text-anchor', 'end').attr('fill', theme.quiet).style('font-size', '10.5px').text(v => v);
+  gsvg.append('text').attr('x', 0).attr('y', gm.t - 12).attr('fill', theme.quiet).style('font-size', '10.5px')
+    .text(`neighbourhoods within reach (of ${gn})`);
+  gsvg.append('g').selectAll('text').data(P).join('text').attr('x', p => gX(p)).attr('y', GH - gm.b + 19)
+    .attr('text-anchor', 'middle').attr('fill', theme.quiet).style('font-size', '11px').text(periodLabel);
+  // where to draw: a soft panel over the three unknown periods, with guides at each period
+  const zx0 = gX(P[0]) + gX.step() * 0.45, zx1 = GW - gm.r + 20;
+  const zone = gsvg.append('g').attr('pointer-events', 'none');
+  zone.append('rect').attr('x', zx0).attr('y', gm.t - 6).attr('width', zx1 - zx0).attr('height', GH - gm.b - gm.t + 12)
+    .attr('rx', 8).attr('fill', '#f3f6fa').attr('stroke', '#cfd8e3').attr('stroke-dasharray', '4 4');
+  zone.selectAll('line').data(P.slice(1)).join('line').attr('x1', p => gX(p)).attr('x2', p => gX(p))
+    .attr('y1', gm.t).attr('y2', GH - gm.b).attr('stroke', '#d6dee8').attr('stroke-dasharray', '2 3');
+  const zoneHint = zone.append('text').attr('x', (zx0 + zx1) / 2).attr('y', gY(gn * 0.82)).attr('text-anchor', 'middle')
+    .attr('fill', theme.quiet).style('font', `600 12.5px ${theme.font}`).text('Drag here to draw your line');
+  const gTruth = gsvg.append('g').attr('pointer-events', 'none');
+  const guessPath = gsvg.append('path').attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 2.6)
+    .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
+  const gGuessDots = gsvg.append('g').attr('pointer-events', 'none');
+  const liveLabel = gsvg.append('text').attr('fill', theme.accent).attr('paint-order', 'stroke').attr('stroke', '#ffffff')
+    .attr('stroke-width', 3.5).style('font', `700 12px ${theme.font}`).attr('pointer-events', 'none');
+  // the given point, with a slow pulse to say "start here"
+  const [sx, sy] = xy(0, truth[0]);
+  const pulse = gsvg.append('circle').attr('cx', sx).attr('cy', sy).attr('r', 6).attr('fill', 'none')
+    .attr('stroke', theme.depth.deep).attr('stroke-width', 1.5).attr('pointer-events', 'none');
+  gsvg.append('circle').attr('cx', sx).attr('cy', sy).attr('r', 5.5).attr('fill', theme.depth.deep)
+    .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('pointer-events', 'none');
+  gsvg.append('text').attr('x', sx).attr('y', sy - 12).attr('text-anchor', 'middle').attr('fill', theme.depth.deep)
+    .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
+    .style('font', `700 12px ${theme.font}`).attr('pointer-events', 'none').text(truth[0]);
+  function beat() {
+    if (phase !== 'draw' || reduceMotion) { pulse.attr('opacity', 0); return; }
+    pulse.attr('r', 6).attr('opacity', 0.7).transition().duration(1400).ease(d3.easeCubicOut)
+      .attr('r', 17).attr('opacity', 0).on('end', beat);
+  }
+  if (phase === 'draw') beat();
+
+  const result = gx.append('div').style('min-height', '64px').style('opacity', 0).style('transition', 'opacity .5s')
+    .style('font-size', `${theme.size.label + 0.5}px`).style('line-height', '1.45').attr('aria-live', 'polite');
+  const row = gx.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '16px');
+  const goBtn = row.append('button').attr('type', 'button').text('Show me').attr('disabled', true)
+    .style('font', `700 ${theme.size.label}px ${theme.font}`).style('padding', '9px 18px').style('border', '0')
+    .style('border-radius', '999px').style('transition', 'background-color .2s, color .2s');
+  const skipBtn = row.append('button').attr('type', 'button').text('Skip to the map')
+    .style('font', `600 ${theme.size.small}px ${theme.font}`).style('padding', '4px 0').style('border', '0')
+    .style('background', 'none').style('color', theme.quiet).style('text-decoration', 'underline').style('cursor', 'pointer');
+  const styleGo = on => goBtn.attr('disabled', on ? null : true).style('cursor', on ? 'pointer' : 'default')
+    .style('background-color', on ? theme.depth.deep : '#e7ebf0').style('color', on ? '#ffffff' : '#97a3b1');
+  styleGo(false);
+
+  // Drawing: the pointer sets the value of the nearest unknown period (whole neighbourhoods, 0 to 30).
+  // Jumping ahead fills the periods in between with a straight line, so any stroke gives a full line.
+  const guessV = P.map((p, i) => i === 0 ? truth[0] : null);
+  let lastI = null;
+  const drawn = () => { let k = 0; while (k < L && guessV[k + 1] != null) k++; return k; };
+  function renderGuess(active) {
+    const k = drawn();
+    const pts = d3.range(k + 1).map(i => xy(i, guessV[i]));
+    guessPath.attr('d', k ? d3.line()(pts) : null);
+    gGuessDots.selectAll('circle').data(pts.slice(1)).join('circle').attr('r', 4).attr('fill', theme.accent)
+      .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('cx', d => d[0]).attr('cy', d => d[1]);
+    if (active != null) {
+      const [ax, ay] = xy(active, guessV[active]);
+      liveLabel.attr('x', ax + 9).attr('y', ay - 9).text(guessV[active]);
+    }
+    styleGo(k === L);
+  }
+  function drawAt([x, y]) {
+    const i = Math.max(1, Math.min(L, Math.round((x - gX(P[0])) / gX.step())));
+    const v = Math.max(0, Math.min(gn, Math.round(gY.invert(y))));
+    guessV[i] = v;
+    const fill = (a, b) => { for (let j = a + 1; j < b; j++) guessV[j] = Math.round(guessV[a] + (guessV[b] - guessV[a]) * (j - a) / (b - a)); };
+    if (lastI != null && Math.abs(i - lastI) > 1) lastI < i ? fill(lastI, i) : fill(i, lastI);
+    let j0 = i - 1; while (j0 > 0 && guessV[j0] == null) j0--;
+    if (j0 < i - 1) fill(j0, i);
+    lastI = i;
+    zoneHint.transition().duration(200).attr('opacity', 0);
+    renderGuess(i);
+  }
+  const gDrag = d3.drag().container(gsvg.node()).clickDistance(0)
+    .on('start', e => { if (phase === 'draw') { lastI = null; drawAt([e.x, e.y]); } })
+    .on('drag', e => { if (phase === 'draw') drawAt([e.x, e.y]); })
+    .on('end', () => { lastI = null; liveLabel.text(''); });
+  const gHit = gsvg.append('rect').attr('x', zx0 - 10).attr('y', 0).attr('width', GW - zx0 + 10).attr('height', GH)
+    .attr('fill', 'transparent').style('cursor', 'crosshair').call(gDrag);
+
+  // Reveal: the real line draws period by period; with each step the map's tide moves to that period,
+  // and the orange outlines show the neighbourhoods that went under in that step.
+  function reveal() {
+    if (phase !== 'draw' || drawn() !== L) return;
+    phase = 'reveal';
+    gHit.style('cursor', null).on('.drag', null);
+    zone.transition().duration(400).attr('opacity', 0.35);
+    liveLabel.text('');
+    pulse.interrupt().attr('opacity', 0);
+    styleGo(false); goBtn.text('…');
+    skipBtn.style('visibility', 'hidden');
+    mapBox.style('opacity', 1);
+    const SEG = reduceMotion ? 0 : 1300, DRAW = SEG * 0.8;
+    const labelAt = (i, dx = 0) => {      // the real number, on the side away from the guess
+      const [x, y] = xy(i, truth[i]), below = guessV[i] < truth[i] ? false : guessV[i] > truth[i];
+      gTruth.append('text').attr('x', x + dx).attr('y', below ? y + 18 : y - 11).attr('text-anchor', 'middle')
+        .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
+        .style('font', `800 13px ${theme.font}`).attr('opacity', 0).text(truth[i])
+        .transition().duration(SEG ? 250 : 0).attr('opacity', 1);
+    };
+    for (let k = 1; k <= L; k++) setTimeout(() => {
+      override = { ...override, period: P[k], thenPeriod: P[k - 1] };
+      if (external) apply(effective(external));
+      const [x0, y0] = xy(k - 1, truth[k - 1]), [x1, y1] = xy(k, truth[k]);
+      gTruth.append('line').attr('x1', x0).attr('y1', y0).attr('x2', x0).attr('y2', y0)
+        .attr('stroke', theme.depth.deep).attr('stroke-width', 3.2).attr('stroke-linecap', 'round')
+        .transition().duration(DRAW).ease(d3.easeCubicInOut).attr('x2', x1).attr('y2', y1)
+        .on('end', () => {
+          gTruth.append('circle').attr('cx', x1).attr('cy', y1).attr('r', 5.5).attr('fill', theme.depth.deep)
+            .attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+          labelAt(k);
+        });
+    }, (k - 1) * SEG);
+    setTimeout(showResult, L * SEG + (SEG ? 250 : 0));
+  }
+  function showResult() {
+    phase = 'done';
+    const g = guessV[L], r = truth[L];
+    const [ex, ey] = xy(L, g);
+    gsvg.append('text').attr('x', ex + 9).attr('y', ey).attr('dy', '0.35em').attr('fill', theme.accent)
+      .style('font', `700 11px ${theme.font}`).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3)
+      .text('you');
+    const score = g === r ? `Spot on: ${r}.` : `You drew ${g}. It's ${r}.`;
+    // the "why", only as far as the data goes: did reach rise first, because homes got cheaper?
+    const roseFirst = truth[1] > truth[0], cheaper = typicalG[1] < typicalG[0];
+    const why = roseFirst
+      ? `It got easier first${cheaper ? `: homes got cheaper until ${R.PERIODS[P[1]][1]}` : ''}. Then ${underLast} went under at once.`
+      : `${underLast} went under in ${periodLabel(P[L])} alone.`;
+    result.html(`<div style="font-weight:800;font-size:17px;margin-bottom:2px">${score}</div><div>${why}</div>`).style('opacity', 1);
+    goBtn.text('Explore the map →'); styleGo(true);
+  }
+  function leave(continueScene) {
+    if (phase === 'off') return;
+    const fromScene = phase !== 'draw';
+    phase = 'off'; override = null;
+    gx.style('opacity', 0).style('pointer-events', 'none');
+    setTimeout(() => gx.style('display', 'none'), 460);
+    mapBox.style('opacity', 1).style('pointer-events', null);
+    under.style('visibility', null);
+    if (continueScene && fromScene && external && external.budget !== G.budget) ev.emit('budget', G.budget);
+    if (external) apply(effective(external));
+  }
+  goBtn.on('click', () => phase === 'draw' ? reveal() : phase === 'done' ? leave(true) : null);
+  skipBtn.on('click', () => leave(false));
+
   return {
     update(s) {
-      cur = s;
-      const dataChanged = !prev || DATA_KEYS.some(k => prev[k] !== s[k]);
-      if (dataChanged) drawData(s, !!prev && !dragging);
-      const pinsChanged = !prev || (prev.pinned || []).join() !== (s.pinned || []).join();
-      if (dataChanged || prev.selected !== s.selected || prev.hovered !== s.hovered || pinsChanged ||
-          prev.highlight !== s.highlight) drawMarks(s);
-      if (!dataChanged && prev.selected !== s.selected) drawTrace(s);     // the chart changes on click, never on hover
-      prev = s;
+      external = s;
+      apply(effective(s));
     },
     on: ev.on,
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
-    _debug: s => ({ comparable: reach(s) })
+    _debug: s => ({ comparable: reach(s), guess: { phase, truth, drawn: guessV.slice(), underLast, typical: typicalG } })
   };
 }
