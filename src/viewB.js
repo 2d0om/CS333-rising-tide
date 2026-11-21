@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · title, budget bar on the map, plain filters · 2026-11-21';
+export const BUILD = 'View B · blue description in the map colours · 2026-11-21';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -178,8 +178,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   header.append('div').attr('role', 'heading').attr('aria-level', 2)
     .style('font', `800 25px/1.15 ${theme.font}`).style('margin-top', '3px').style('letter-spacing', '-0.01em')
     .text('Where can your budget still find dry land?');
-  header.append('div').style('font-size', `${theme.size.label}px`).style('color', theme.quiet).style('margin-top', '3px')
-    .text('Set your budget, and the sea covers every neighbourhood where a typical home costs more.');
+  // The description, in the map's own colours: the words sand and water look like the map's sand and water
+  const SAND_WORD = '#a8803a';
+  const sub = header.append('div').style('font', `500 ${theme.size.label + 1.5}px/1.45 ${theme.font}`)
+    .style('color', theme.depth.deep).style('margin-top', '4px');
+  const describe = (size, word) => sub.html(`Your budget is the tide line. ` +
+    `<strong style="color:${SAND_WORD}">Sand</strong> is where it still buys a typical ${size} m² ${word}; ` +
+    `<strong style="color:${theme.depth.deep}">water</strong> is where it no longer does. Drag it and watch the coast move.`);
+  describe(80, 'apartment');
   const headH = header.node().getBoundingClientRect().height || 64;
 
   const bodyH = height - headH - rowGap;
@@ -668,6 +674,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         : num(C.k1, '#8493a5', periodLabel(s.thenPeriod)) + `<div style="font-size:26px;color:${theme.quiet};line-height:44px">→</div>` +
           num(C.k2, theme.depth.deep, periodLabel(s.period))) + `</div>${ofN}`;
     headline.html(html);
+    describe(s.size, homeWord());
     // Why: computed from the same sales. What is being sold changed (more off-plan), and off-plan
     // costs more than resale in the same neighbourhood. Shown only when the data supports it.
     let why = '';
