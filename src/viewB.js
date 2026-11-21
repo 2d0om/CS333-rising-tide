@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · guess back to drawing, exact answer, map size back, simpler chart · 2026-11-21';
+export const BUILD = 'View B · flats only (no offices or hotel rooms) · 2026-11-21';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -69,8 +69,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const byComm = new Map(features.map(f => [commOfF(f), f]));
   const official = c => titleCase(byComm.get(c)?.properties.CNAME_E || `Community ${c}`);
 
+  // Homes only: a "Unit" can also be an office, a shop or a hotel room (15% of unit sales in 2015–17),
+  // which would mix non-homes into "a typical apartment". Apartments are units of sub-type Flat.
   const homeSales = data.rows
-    .filter(r => r.trans_group_en === 'Sales' && (r.property_type_en === 'Unit' || r.property_type_en === 'Villa'))
+    .filter(r => r.trans_group_en === 'Sales' &&
+      ((r.property_type_en === 'Unit' && r.property_sub_type_en === 'Flat') || r.property_type_en === 'Villa'))
     .map(r => ({ r, comm: r.comm_num, period: R.periodOf(r) }));
 
   // The name people use: the master project behind most of a community's sales (from the data),
