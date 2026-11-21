@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · title: how much of Dubai can your budget keep above water · 2026-11-21';
+export const BUILD = 'View B · title: How much of Dubai can your budget keep above water? · 2026-11-21';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -177,7 +177,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('text-transform', 'uppercase').style('color', theme.depth.shallow).text('The Sea · a buyer’s view of Dubai, 2015–2026');
   header.append('div').attr('role', 'heading').attr('aria-level', 2)
     .style('font', `800 25px/1.15 ${theme.font}`).style('margin-top', '3px').style('letter-spacing', '-0.01em')
-    .text('As prices rise, how much of Dubai can your budget keep above water?');
+    .text('How much of Dubai can your budget keep above water?');
   // The description, in the map's own colours: the words sand and water look like the map's sand and water
   const SAND_WORD = '#a8803a';
   const sub = header.append('div').style('font', `500 ${theme.size.label + 1.5}px/1.45 ${theme.font}`)
