@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Sea · Rising Tide</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 16px; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; color: #1d2733; background: #ffffff; }
+    #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 15px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div id="view-b"></div>
+  <div id="loading">Filling the sea…</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-server@3.0.1"></script>
+  <script type="module">
+    import { runViewB } from './src/standalone.js';
+    const loading = document.querySelector('#loading');
+    try {
+      await runViewB(document.querySelector('#view-b'));
+      loading.remove();
+    } catch (e) {
+      loading.textContent = 'The data could not load. Check your connection and refresh.';
+      throw e;
+    }
+  </script>
+</body>
+</html>

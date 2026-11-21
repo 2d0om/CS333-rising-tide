@@ -19,35 +19,17 @@
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-server@3.0.1"></script>
   <script type="module">
-    import { loadAll } from '../src/load.js';
-    import theme from '../src/theme.js';
-    import { createViewB, BUILD } from '../src/viewB.js';
+    import { runViewB } from '../src/standalone.js';
+    import { BUILD } from '../src/viewB.js';
 
     const log = document.querySelector('#log');
     document.querySelector('#build').textContent = `Build: ${BUILD}`;   // if this line is missing or old, you are not running the latest code
-    const data = await loadAll();
-    const el = document.querySelector('#view-b');
-    // fill the window so everything is visible at once (main.js decides the real size)
-    const size = { width: Math.min(1480, innerWidth - 32), height: Math.max(560, innerHeight - 32 - 16 - 22) };
-    const view = createViewB(el, data, theme, { ...size, guessFirst: !new URLSearchParams(location.search).has('noguess') });
-
-    // Dev-only stand-in for main.js: apply this view's own events to a local state,
-    // so the view can be tested alone. main.js replaces this when everything is wired.
-    let state = { budget: 1200000, size: 80, period: '2024-26', thenPeriod: '2015-17', mode: 'all',
-      money: 'nominal', homeType: 'apartment', selected: '346', pinned: [], hovered: null,
-      unlocked: true, dropExtremes: false, highlight: null };   // '346' = Business Bay
-    const set = patch => { state = { ...state, ...patch }; view.update(state); };
-    const keyFor = { select: 'selected', hover: 'hovered', mode: 'mode', thenPeriod: 'thenPeriod', period: 'period', budget: 'budget' };
-    ['select', 'pin', 'hover', 'mode', 'thenPeriod', 'period', 'budget'].forEach(ev => view.on(ev, v => {
-      if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}`;
-      if (ev === 'pin') {
-        const p = state.pinned;
-        set({ pinned: p.includes(v) ? p.filter(x => x !== v) : [...p, v].slice(-4) });
-      } else set({ [keyFor[ev]]: v });
-    }));
-    set({});
+    // same wiring as the public page (index.html); this page adds the build stamp and an event log
+    await runViewB(document.querySelector('#view-b'), {
+      chrome: 16 + 22,
+      onEvent: (ev, v) => { if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}`; }
+    });
     log.textContent = 'Ready. Hover, click (select), shift-click (pin), click a neighbourhood to trace it on the chart, click a period, drag the budget bar. Esc clears.';
-    window.__viewB = { view, get state() { return state; }, set };   // for automated checks
   </script>
 </body>
 </html>
