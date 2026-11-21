@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · clearer guess: three dots, plain words · 2026-11-21';
+export const BUILD = 'View B · guess back to drawing, exact answer, map size back, simpler chart · 2026-11-21';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -173,15 +173,17 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
 
   // 0. The title: what this is about in one line, and what to do with it
   const header = root.append('div').style('flex', 'none');
-  header.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.12em')
-    .style('text-transform', 'uppercase').style('color', theme.depth.shallow).text('The Sea · a buyer’s view of Dubai, 2015–2026');
-  header.append('div').attr('role', 'heading').attr('aria-level', 2)
-    .style('font', `800 25px/1.15 ${theme.font}`).style('margin-top', '3px').style('letter-spacing', '-0.01em')
+  const titleRow = header.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '12px');
+  titleRow.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.12em')
+    .style('text-transform', 'uppercase').style('color', '#ffffff').style('background', theme.depth.deep)
+    .style('padding', '3px 9px').style('border-radius', '999px').style('flex', 'none').text('The Sea · 2015–2026');
+  titleRow.append('div').attr('role', 'heading').attr('aria-level', 2)
+    .style('font', `800 25px/1.15 ${theme.font}`).style('letter-spacing', '-0.01em')
     .text('How much of Dubai can your budget keep above water?');
   // The description, in the map's own colours: the words sand and water look like the map's sand and water
   const SAND_WORD = '#a8803a';
   const sub = header.append('div').style('font', `500 ${theme.size.label + 1.5}px/1.45 ${theme.font}`)
-    .style('color', theme.depth.deep).style('margin-top', '4px');
+    .style('color', theme.depth.deep).style('margin-top', '3px');
   const describe = (size, word) => sub.html(`Your budget is the tide line. ` +
     `<strong style="color:${SAND_WORD}">Sand</strong> is where it still buys a typical ${size} m² ${word}; ` +
     `<strong style="color:${theme.depth.deep}">water</strong> is where it no longer does. Drag it and watch the coast move.`);
@@ -193,7 +195,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('gap', `${colGap}px`).style('flex', 'none');
   const panelW = wide ? Math.round(Math.max(360, Math.min(440, width * 0.33))) : width;
   const mapW = wide ? width - panelW - colGap : width;
-  const stripH = 58;
+  const stripH = 50;
   const mapH = wide ? bodyH - stripH : Math.max(360, bodyH - 640 - colGap - stripH);
   const panelH = wide ? bodyH : 640;
 
@@ -207,7 +209,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('display', 'flex').style('flex-direction', 'column').style('gap', '12px').style('min-width', '0');
 
   // 1. The finding: one sentence with two labelled numbers
-  const headline = panel.append('div').style('min-height', '150px');
+  const headline = panel.append('div').style('min-height', '112px');
 
   // 2. Two filters, each under a plain label
   const label = t => panel.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.08em')
@@ -233,12 +235,13 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const chartBox = panel.append('div').style('margin-top', '-6px');
 
   // ---------- map: data underneath, moving water and fog in the middle, names and lines on top ----------
-  const legendH = 50;
+  const legendH = 0;            // the key is a small box in the bottom-right corner, not a band
+  const KEY_W = 262, KEY_H = 150;
   const svg = mapBox.append('svg').attr('width', mapW).attr('height', mapH)
     .attr('viewBox', `0 0 ${mapW} ${mapH}`).attr('role', 'img')
     .attr('aria-label', 'Map of Dubai neighbourhoods: sand where your budget buys a typical home, water where it does not')
     .style('display', 'block').style('position', 'absolute').style('left', 0).style('top', 0);
-  const projection = d3.geoMercator().fitExtent([[18, 18], [mapW - 18, mapH - legendH - 14]],
+  const projection = d3.geoMercator().fitExtent([[14, 14], [mapW - 14, mapH - 14]],
     { type: 'FeatureCollection', features: frameFeatures });
   const path = d3.geoPath(projection);
 
@@ -282,24 +285,25 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('cx', d => projection(d.coords)[0]).attr('cy', d => projection(d.coords)[1])
     .attr('r', 1.5).attr('fill', theme.ink).attr('fill-opacity', 0.3);
 
-  // Legend band along the bottom of the map: what sand, water, orange and fog mean
-  const legend = mapBox.append('div').style('position', 'absolute').style('left', 0).style('right', 0).style('bottom', 0)
-    .style('height', `${legendH}px`).style('background', 'rgba(255,255,255,0.93)').style('border-top', `1px solid ${theme.grid}`)
-    .style('display', 'flex').style('align-items', 'center').style('gap', '18px').style('padding', '0 14px')
-    .style('font-size', '11.5px').style('line-height', '1.35').style('pointer-events', 'none');
-  const kw = 118;
-  const legScale = legend.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '8px');
+  // The key, in the empty bottom-right corner of the map: what sand, water, orange and fog mean
+  const legend = mapBox.append('div').style('position', 'absolute').style('right', '10px').style('bottom', '10px')
+    .style('width', `${KEY_W}px`).style('box-sizing', 'border-box').style('background', 'rgba(255,255,255,0.94)')
+    .style('border', `1px solid ${theme.grid}`).style('border-radius', '8px')
+    .style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '8px 10px')
+    .style('font-size', '11px').style('line-height', '1.35').style('pointer-events', 'none');
+  const kw = KEY_W - 22;
+  const legScale = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '2px');
   const legSvg = legScale.append('svg').attr('width', kw).attr('height', 30).attr('aria-hidden', true);
   const kg = legSvg.append('defs').append('linearGradient').attr('id', 'vb-key');
   [...d3.range(0, 0.5, 0.05), 0.4999, 0.5, ...d3.range(0.55, 1.001, 0.05)]
     .forEach(t => kg.append('stop').attr('offset', t).attr('stop-color', depthColor(t)));
   legSvg.append('rect').attr('y', 4).attr('width', kw).attr('height', 10).attr('rx', 2).attr('fill', 'url(#vb-key)');
   legSvg.append('line').attr('x1', kw / 2).attr('x2', kw / 2).attr('y1', 1).attr('y2', 17).attr('stroke', theme.coastline).attr('stroke-width', 2);
-  [[0, 'all', 'start'], [kw / 2, 'half', 'middle'], [kw, 'none', 'end']].forEach(([x, t, a]) =>
+  [[0, 'all homes in reach', 'start'], [kw / 2, 'half', 'middle'], [kw, 'none', 'end']].forEach(([x, t, a]) =>
     legSvg.append('text').attr('x', x).attr('y', 28).attr('text-anchor', a).attr('fill', theme.quiet).style('font-size', '10px').text(t));
   const legText = legScale.append('div');
   const legOther = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '2px');
-  const legNames = legend.append('div').style('color', theme.quiet).style('margin-left', 'auto').style('text-align', 'right');
+  const legNames = legend.append('div').style('color', theme.quiet);
 
   // How far inland each community lies, to order the tide: a rising sea reaches coastal communities
   // first; a falling one drains inland first. The Gulf is north-west, so inland runs south-east.
@@ -369,6 +373,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       return { x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2 };
     };
     // fits: the label's centre and at least 9 of 10 points around its box lie inside the shape
+    const inKey = b => b.x1 > mapW - KEY_W - 14 && b.y1 > mapH - KEY_H - 14;
     const fits = (b, ring) => {
       const mx = (b.x0 + b.x1) / 2, my = (b.y0 + b.y1) / 2;
       if (!d3.polygonContains(ring, [mx, my])) return false;
@@ -383,11 +388,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         const lines = splitName(shortName(nameOf(it.c)));
         for (const px of [11, 10, 9.5]) {
           const b = box(it.a.x, it.a.y, lines, px);
-          if (fits(b, it.a.ring) && !overlaps(b)) { placed.push(b); out.push({ ...it, lines, px }); return; }
+          if (fits(b, it.a.ring) && !overlaps(b) && !inKey(b)) { placed.push(b); out.push({ ...it, lines, px }); return; }
         }
         if (!C.set.includes(it.c)) return;          // counted neighbourhoods: a smaller name, even if it overhangs
         const b = box(it.a.x, it.a.y, lines, 9);
-        if (!overlaps(b) && b.x0 > 2 && b.x1 < mapW - 2 && b.y1 < mapH - legendH - 2) { placed.push(b); out.push({ ...it, lines, px: 9 }); }
+        if (!overlaps(b) && !inKey(b) && b.x0 > 2 && b.x1 < mapW - 2 && b.y1 < mapH - 2) { placed.push(b); out.push({ ...it, lines, px: 9 }); }
       });
     const g = gLabels.selectAll('text.lab').data(out, d => d.c).join(enter => enter.append('text').attr('class', 'lab')
       .attr('text-anchor', 'middle').attr('fill', theme.ink).attr('paint-order', 'stroke')
@@ -430,11 +435,15 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .append('path').attr('d', 'M0,1L9,5L0,9z').attr('fill', theme.ink);
   const gGrid = chart.append('g').attr('pointer-events', 'none');
   const plotBg = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.l - cm.r)
-    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
+    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'ew-resize');
   const band = chart.append('path').attr('fill', theme.depth.shallow).attr('fill-opacity', 0.14).attr('pointer-events', 'none');
   const gLines = chart.append('g');
   const budgetLine = chart.append('line').attr('y1', cm.t - 4).attr('y2', plotB)
     .attr('stroke', theme.ink).attr('stroke-opacity', 0.55).attr('stroke-width', 1).attr('pointer-events', 'none');
+  const hoverLine = chart.append('line').attr('y1', cm.t - 4).attr('y2', plotB).attr('stroke', theme.ink)
+    .attr('stroke-opacity', 0.35).attr('stroke-dasharray', '3 3').attr('pointer-events', 'none').attr('opacity', 0);
+  const hoverLab = chart.append('text').attr('y', cm.t - 6).attr('fill', theme.ink).attr('paint-order', 'stroke')
+    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `600 11px ${theme.font}`).attr('pointer-events', 'none').attr('opacity', 0);
   const gEq = chart.append('g');
   const gDots = chart.append('g').attr('pointer-events', 'none');
   const gTrace = chart.append('g').attr('pointer-events', 'none');
@@ -452,14 +461,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // period on the map: sand once your budget reaches it, sea-blue while it is out of reach. So the bar
   // shows where the next neighbourhoods come into reach before you drag. The orange notch is the one
   // you clicked.
-  const labW = 116, trackY = 25;
+  const labW = 116, trackY = 21;
   const ssvg = strip.append('svg').attr('width', mapW).attr('height', stripH).style('display', 'block').style('overflow', 'visible');
   ssvg.append('defs').append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
     .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
   const barX = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([labW + 12, mapW - 14]).clamp(true);
-  ssvg.append('text').attr('x', 2).attr('y', 15).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
+  ssvg.append('text').attr('x', 2).attr('y', 12).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
     .style('letter-spacing', '0.08em').text('YOUR BUDGET');
-  const sVal = ssvg.append('text').attr('x', 2).attr('y', 40).attr('fill', theme.ink)
+  const sVal = ssvg.append('text').attr('x', 2).attr('y', 37).attr('fill', theme.ink)
     .style('font', `800 21px ${theme.font}`).style('font-variant-numeric', 'tabular-nums');
   const sHit = ssvg.append('rect').attr('x', barX.range()[0] - 10).attr('y', 2).attr('width', barX.range()[1] - barX.range()[0] + 20)
     .attr('height', 40).attr('fill', 'transparent').style('cursor', 'pointer');
@@ -469,7 +478,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('fill', theme.depth.deep).attr('pointer-events', 'none');
   const gNotch = ssvg.append('g');
   ssvg.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
-    .attr('x', v => barX(v)).attr('y', trackY + 24).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .attr('x', v => barX(v)).attr('y', trackY + 23).attr('text-anchor', 'middle').attr('fill', theme.quiet)
     .style('font-size', '10.5px').text(v => short$(v));
   const knob = ssvg.append('g').attr('tabindex', 0).attr('role', 'slider')
     .attr('aria-label', 'Your budget. Arrow keys change it.')
@@ -573,7 +582,15 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     });
   const jumpOn = (sc, node) => event => { if (cur) ev.emit('budget', roundBudget(budgetAt(sc, d3.pointer(event, node)[0]))); };
   sHit.call(dragOn(barX, ssvg.node())).on('click', jumpOn(barX, ssvg.node()));
-  plotBg.call(dragOn(cx, chart.node())).on('click', jumpOn(cx, chart.node()));
+  plotBg.call(dragOn(cx, chart.node())).on('click', jumpOn(cx, chart.node()))
+    .on('mousemove', event => {
+      if (dragging) { hoverLine.attr('opacity', 0); hoverLab.attr('opacity', 0); return; }
+      const x = clampTo(cx, d3.pointer(event, chart.node())[0]);
+      hoverLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
+      hoverLab.attr('x', x).attr('text-anchor', x > CW - 120 ? 'end' : x < 90 ? 'start' : 'middle')
+        .text(`Click to set ${aed(roundBudget(cx.invert(x)))}`).attr('opacity', 1);
+    })
+    .on('mouseleave', () => { hoverLine.attr('opacity', 0); hoverLab.attr('opacity', 0); });
   knob.call(dragOn(barX, ssvg.node())).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
@@ -675,28 +692,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
           num(C.k2, theme.depth.deep, periodLabel(s.period))) + `</div>${ofN}`;
     headline.html(html);
     describe(s.size, homeWord());
-    // Why: computed from the same sales. What is being sold changed (more off-plan), and off-plan
-    // costs more than resale in the same neighbourhood. Shown only when the data supports it.
-    let why = '';
-    if (!same && s.mode === 'all' && C.k2 < C.k1) {
-      const cnt = (p, m) => { const mp = pricesBy(p, { ...s, mode: m }); return d3.sum(C.set, c => (mp.get(c) || []).length); };
-      const share = p => cnt(p, 'offplan') / Math.max(1, cnt(p, 'offplan') + cnt(p, 'ready'));
-      const off = pricesBy(s.period, { ...s, mode: 'offplan' }), rdy = pricesBy(s.period, { ...s, mode: 'ready' });
-      const prem = d3.median(C.set.filter(c => (off.get(c) || []).length >= R.MIN_SALES && (rdy.get(c) || []).length >= R.MIN_SALES),
-        c => d3.quantileSorted(off.get(c), 0.5) / d3.quantileSorted(rdy.get(c), 0.5));
-      const a = share(s.thenPeriod), z = share(s.period);
-      if (z - a >= 0.05 && prem >= 1.1) why = `<div style="font-size:${theme.size.small}px;line-height:1.45;margin-top:6px">` +
-        `<strong>Why so sharp?</strong> New launches. ${Math.round(z * 10)} in 10 homes sold are now off-plan (${Math.round(a * 10)} in 10 in ${periodLabel(s.thenPeriod)}), ` +
-        `at about ${d3.format('.1f')(prem)}× the resale price next door.</div>`;
-    }
-    headline.html(headline.html() + why);
-    chartHead.html(`Neighbourhoods within reach, by budget <span style="font-weight:400;color:${theme.quiet}">· one line per period</span>`);
+    // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
+    chartHead.html(`Neighbourhoods within reach, by budget <span style="font-weight:400;color:${theme.quiet}">· click to set your budget</span>`);
   }
 
   function drawLegend(s, same) {
-    legText.html(`<strong>Sand</strong>: your budget buys a typical home<br>` +
-      `<strong style="color:${theme.depth.deep}">Water</strong>: it doesn't (deeper = fewer homes)`);
-    legNames.html(`Names: the ${C.n} counted, where<br>they don't overlap · hover for others`);
+    legText.html(`<strong style="color:#a8803a">Sand</strong>: your budget buys a typical home. ` +
+      `<strong style="color:${theme.depth.deep}">Water</strong>: it doesn't; deeper = fewer homes in reach.`);
+    legNames.html(`Names: the ${C.n} counted · hover for others`);
     legOther.html((same ? '' : `<span><span style="display:inline-block;width:12px;height:10px;border:2px solid ${theme.accent};border-radius:2px;vertical-align:-1px;margin-right:5px"></span>` +
       `<strong>${flipped.length}</strong> went under since ${periodLabel(s.thenPeriod)}</span>`) +
       `<span><span style="display:inline-block;width:12px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;background:${surface ? 'radial-gradient(circle at 35% 35%,#ffffff,#b9c3ce)' : `repeating-linear-gradient(45deg, ${theme.fog} 0 2px, #ffffff 2px 5px)`}"></span>` +
@@ -764,19 +767,13 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const order = { other: 0, then: 1, now: 2 };
     const lines = gLines.selectAll('g').data(periodsInfo.slice().sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
       .join(enter => {
-        const g = enter.append('g').style('cursor', 'pointer');
+        const g = enter.append('g').attr('pointer-events', 'none');
         g.append('path').attr('class', 'ln').attr('fill', 'none').attr('stroke-linejoin', 'round');
         g.append('path').attr('class', 'hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 10);
         return g;
       }).order();
     lines.select('.ln').attr('stroke', d => pcol(d.p)).attr('stroke-width', widthOf).attr('d', d => step(d.pts));
-    lines.select('.hit').attr('d', d => step(d.pts))
-      .on('mouseenter', (event, d) => { if (d.p !== cur.period) preview(d.Sp); })
-      .on('mousemove', (event, d) => showTip(event, `<strong>${periodLabel(d.p)}</strong>: your budget reaches ${d3.bisectRight(d.edges, cur.budget)} of ${d.edges.length}` +
-        (d.edges.length < n ? ` <span style="color:${theme.quiet}">(${n - d.edges.length} had too few sales)</span>` : '') +
-        `<br><span style="color:${theme.quiet}">${d.p === cur.period ? 'The period on the map.' : 'Click to show this period on the map.'}</span>`))
-      .on('mouseleave', () => { hideTip(); endPreview(); })
-      .on('click', (event, d) => { event.stopPropagation(); hideTip(); endPreview(); if (d.p !== cur.period) ev.emit('period', d.p); });
+    lines.select('.hit').attr('d', d => step(d.pts));
 
     drawNotches(s);
     placeBudget(s.budget, !!prev && !dragging);
@@ -1020,23 +1017,26 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     under.style('visibility', 'hidden');     // shadows reach past the panel's edge
     override = { ...G, period: P[0], thenPeriod: P[0] };
   }
-  // The label is the loudest line until the guess is made; then it folds away with the instruction
+  // The reader's own line is raspberry: apart from the sand, the sea, and the orange of a selection.
+  // The label is the loudest line until the guess is made; then it folds away with the instruction.
+  const GUESS = '#d6336c';
+  const M = d3.format('~g')(G.budget / 1e6);
   const fold = sel => sel.style('overflow', 'hidden').style('transition', 'max-height .5s, opacity .35s, margin .5s');
   const tag = fold(gx.append('div')).style('max-height', '28px').style('font', `800 15px ${theme.font}`)
-    .style('letter-spacing', '0.1em').style('text-transform', 'uppercase').style('color', theme.accent)
-    .html(`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${theme.accent};` +
+    .style('letter-spacing', '0.1em').style('text-transform', 'uppercase').style('color', GUESS)
+    .html(`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${GUESS};` +
       `margin-right:8px;vertical-align:1px"></span>Before the map: make a guess`);
-  gx.append('div').style('font', `800 24px/1.15 ${theme.font}`)
-    .text(`What can AED ${d3.format('~g')(G.budget / 1e6)} million buy?`);
+  gx.append('div').style('font', `800 22px/1.2 ${theme.font}`)
+    .text(`In how many neighbourhoods can AED\u00a0${M}\u00a0million buy a typical apartment?`);
   gx.append('div').style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').style('color', theme.ink)
-    .html(`In ${periodLabel(P[0])}, it bought a typical ${G.size} m² apartment in <strong>${truth[0]} out of ${gn}</strong> ` +
-      `main neighbourhoods.`);
+    .html(`In ${periodLabel(P[0])}: <strong>${truth[0]}&nbsp;of the&nbsp;${gn}</strong> main neighbourhoods, where a typical ` +
+      `${G.size}&nbsp;m² apartment cost AED&nbsp;${M}&nbsp;million or less.`);
   const task = fold(gx.append('div')).style('max-height', '48px').style('font', `700 ${theme.size.label + 1}px/1.45 ${theme.font}`)
-    .style('color', theme.accent).text(`How many by ${periodLabel(P[L])}? Drag the orange dots up or down.`);
+    .style('color', GUESS).text(`Draw your guess up to ${periodLabel(P[L])}.`);
 
   const usedTop = d3.sum(gx.selectAll(':scope > div').nodes(), n => n.getBoundingClientRect().height) + 3 * 8 || 140;
   const GW = panelW, GH = Math.max(210, Math.min(400, panelH - usedTop - 80 - 44 - 8 * 4));
-  const gm = { l: 28, r: 50, t: 26, b: 30 };
+  const gm = { l: 28, r: 46, t: 26, b: 30 };
   const gsvg = gx.append('svg').attr('width', GW).attr('height', GH).style('display', 'block')
     .style('touch-action', 'none').style('overflow', 'visible').style('user-select', 'none');
   const gX = d3.scalePoint().domain(P).range([gm.l + 16, GW - gm.r]);
@@ -1048,29 +1048,40 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   gsvg.append('g').selectAll('text').data(gyt).join('text').attr('x', gm.l - 6).attr('y', v => gY(v)).attr('dy', '0.35em')
     .attr('text-anchor', 'end').attr('fill', theme.quiet).style('font-size', '10.5px').text(v => v);
   gsvg.append('text').attr('x', 0).attr('y', gm.t - 14).attr('fill', theme.quiet).style('font-size', '10.5px')
-    .text(`neighbourhoods where AED 1M buys a typical home (of ${gn})`);
+    .text(`neighbourhoods (of ${gn})`);
   gsvg.append('g').selectAll('text').data(P).join('text').attr('x', p => gX(p)).attr('y', GH - gm.b + 19)
     .attr('text-anchor', 'middle').attr('fill', theme.quiet).style('font-size', '11px').text(periodLabel);
-  // the three unknown periods: a soft panel, with a track under each dot
-  const zx0 = gX(P[0]) + gX.step() * 0.45, zx1 = GW - gm.r + 22;
+  // where to draw: a soft panel over the three unknown periods, with guides at each period
+  const zx0 = gX(P[0]) + gX.step() * 0.45, zx1 = GW - gm.r + 20;
   const zone = gsvg.append('g').attr('pointer-events', 'none');
-  zone.append('rect').attr('x', zx0).attr('y', gm.t - 8).attr('width', zx1 - zx0).attr('height', GH - gm.b - gm.t + 16)
-    .attr('rx', 8).attr('fill', '#f6f8fb').attr('stroke', '#d6dee8').attr('stroke-dasharray', '4 4');
+  zone.append('rect').attr('x', zx0).attr('y', gm.t - 6).attr('width', zx1 - zx0).attr('height', GH - gm.b - gm.t + 12)
+    .attr('rx', 8).attr('fill', '#f3f6fa').attr('stroke', '#cfd8e3').attr('stroke-dasharray', '4 4');
   zone.selectAll('line').data(P.slice(1)).join('line').attr('x1', p => gX(p)).attr('x2', p => gX(p))
-    .attr('y1', gY(gn)).attr('y2', gY(0)).attr('stroke', '#c9d3df').attr('stroke-width', 3).attr('stroke-linecap', 'round')
-    .attr('stroke-opacity', 0.55);
+    .attr('y1', gm.t).attr('y2', GH - gm.b).attr('stroke', '#d6dee8').attr('stroke-dasharray', '2 3');
+  const zoneHint = zone.append('text').attr('x', (zx0 + zx1) / 2).attr('y', gY(gn * 0.82)).attr('text-anchor', 'middle')
+    .attr('fill', theme.quiet).style('font', `600 12.5px ${theme.font}`).text('Drag here to draw your line');
   const gTruth = gsvg.append('g').attr('pointer-events', 'none');
-  const guessPath = gsvg.append('path').attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 2.6)
+  const guessPath = gsvg.append('path').attr('fill', 'none').attr('stroke', GUESS).attr('stroke-width', 2.8)
     .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
-  // the given point
-  const [px0, py0] = xy(0, truth[0]);
-  gsvg.append('circle').attr('cx', px0).attr('cy', py0).attr('r', 5.5).attr('fill', theme.depth.deep)
-    .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('pointer-events', 'none');
-  gsvg.append('text').attr('x', px0).attr('y', py0 - 12).attr('text-anchor', 'middle').attr('fill', theme.depth.deep)
-    .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-    .style('font', `800 13px ${theme.font}`).attr('pointer-events', 'none').text(truth[0]);
-  const gHandles = gsvg.append('g');
+  const gGuessDots = gsvg.append('g').attr('pointer-events', 'none');
+  const liveLabel = gsvg.append('text').attr('fill', GUESS).attr('paint-order', 'stroke').attr('stroke', '#ffffff')
+    .attr('stroke-width', 3.5).style('font', `700 12px ${theme.font}`).attr('pointer-events', 'none');
   const gKey = gsvg.append('g').attr('pointer-events', 'none').attr('opacity', 0);
+  // the given point, with a slow pulse to say "start here"
+  const [sx, sy] = xy(0, truth[0]);
+  const pulse = gsvg.append('circle').attr('cx', sx).attr('cy', sy).attr('r', 6).attr('fill', 'none')
+    .attr('stroke', theme.depth.deep).attr('stroke-width', 1.5).attr('pointer-events', 'none');
+  gsvg.append('circle').attr('cx', sx).attr('cy', sy).attr('r', 5.5).attr('fill', theme.depth.deep)
+    .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('pointer-events', 'none');
+  gsvg.append('text').attr('x', sx).attr('y', sy - 12).attr('text-anchor', 'middle').attr('fill', theme.depth.deep)
+    .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
+    .style('font', `700 12px ${theme.font}`).attr('pointer-events', 'none').text(truth[0]);
+  function beat() {
+    if (phase !== 'draw' || reduceMotion) { pulse.attr('opacity', 0); return; }
+    pulse.attr('r', 6).attr('opacity', 0.7).transition().duration(1400).ease(d3.easeCubicOut)
+      .attr('r', 17).attr('opacity', 0).on('end', beat);
+  }
+  if (phase === 'draw') beat();
 
   const result = gx.append('div').style('min-height', '64px').style('opacity', 0).style('transition', 'opacity .5s')
     .style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').attr('aria-live', 'polite');
@@ -1085,79 +1096,58 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('background-color', on ? theme.depth.deep : '#e7ebf0').style('color', on ? '#ffffff' : '#97a3b1');
   styleGo(false);
 
-  // The guess: one dot per unknown period, starting level with the given point (as if nothing changed).
-  // Grab a dot and it moves only up and down its own track; sweep across the panel and each dot you pass
-  // follows the pointer. Values are whole neighbourhoods, 0 to 30, and each dot shows its number.
-  const guessV = P.map(() => truth[0]);
-  const touched = P.map((p, i) => i === 0);
-  const anyTouched = () => touched.slice(1).some(Boolean);
-  const clampV = v => Math.max(0, Math.min(gn, Math.round(v)));
-  function renderGuess() {
-    guessPath.attr('d', d3.line()(P.map((p, i) => xy(i, guessV[i]))))
-      .attr('stroke-dasharray', anyTouched() ? null : '5 5').attr('stroke-opacity', anyTouched() ? 1 : 0.55);
-    const h = gHandles.selectAll('g').data(d3.range(1, L + 1)).join(enter => {
-      const g = enter.append('g').attr('tabindex', 0).attr('role', 'slider').style('outline', 'none').style('cursor', 'ns-resize')
-        .attr('aria-label', i => `Your guess for ${periodLabel(P[i])}`).attr('aria-valuemin', 0).attr('aria-valuemax', gn);
-      g.append('circle').attr('class', 'ring').attr('r', 9).attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 1.5);
-      g.append('circle').attr('class', 'dot').attr('r', 8.5).attr('stroke', theme.accent).attr('stroke-width', 2.5);
-      g.append('text').attr('class', 'val').attr('x', 14).attr('dy', '0.35em').attr('fill', theme.accent)
-        .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `800 13px ${theme.font}`);
-      return g;
-    });
-    h.attr('transform', i => `translate(${xy(i, guessV[i])})`).attr('aria-valuenow', i => guessV[i]);
-    h.select('.dot').attr('fill', i => touched[i] ? theme.accent : '#ffffff');
-    h.select('.val').text(i => guessV[i]);
-    styleGo(anyTouched());
-  }
-  renderGuess();
-  function beat() {                                   // untouched dots breathe until they are moved
-    const rings = gHandles.selectAll('.ring').filter(i => !touched[i]);
-    if (phase !== 'draw' || reduceMotion || rings.empty()) { gHandles.selectAll('.ring').interrupt().attr('opacity', 0); return; }
-    rings.attr('r', 9).attr('opacity', 0.8).transition().duration(1300).ease(d3.easeCubicOut).attr('r', 20).attr('opacity', 0)
-      .end().then(beat, beat);
-  }
-  if (phase === 'draw') beat();
-
-  let lastI = null, lockI = null;
-  function drawAt([x, y], start) {
-    if (start) lockI = d3.range(1, L + 1).find(i => { const [hx, hy] = xy(i, guessV[i]); return Math.hypot(x - hx, y - hy) < 22; }) ?? null;
-    const i = lockI ?? Math.max(1, Math.min(L, Math.round((x - gX(P[0])) / gX.step())));
-    guessV[i] = clampV(gY.invert(y)); touched[i] = true;
-    if (lockI == null && lastI != null && Math.abs(i - lastI) > 1) {     // a fast sweep skipped a period: join it up
-      const [a, b] = lastI < i ? [lastI, i] : [i, lastI];
-      for (let j = a + 1; j < b; j++) { guessV[j] = clampV(guessV[a] + (guessV[b] - guessV[a]) * (j - a) / (b - a)); touched[j] = true; }
+  // Drawing: the pointer sets the value of the nearest unknown period (whole neighbourhoods, 0 to 30).
+  // Jumping ahead fills the periods in between with a straight line, so any stroke gives a full line.
+  // The stroke can start anywhere from the given point on.
+  const guessV = P.map((p, i) => i === 0 ? truth[0] : null);
+  let lastI = null;
+  const drawn = () => { let k = 0; while (k < L && guessV[k + 1] != null) k++; return k; };
+  function renderGuess(active) {
+    const k = drawn();
+    const pts = d3.range(k + 1).map(i => xy(i, guessV[i]));
+    guessPath.attr('d', k ? d3.line()(pts) : null);
+    gGuessDots.selectAll('circle').data(pts.slice(1)).join('circle').attr('r', 4.5).attr('fill', GUESS)
+      .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('cx', d => d[0]).attr('cy', d => d[1]);
+    if (active != null) {
+      const [ax, ay] = xy(active, guessV[active]);
+      liveLabel.attr('x', ax + 9).attr('y', ay - 9).text(guessV[active]);
     }
+    styleGo(k === L);
+  }
+  function drawAt([x, y]) {
+    const i = Math.max(1, Math.min(L, Math.round((x - gX(P[0])) / gX.step())));
+    const v = Math.max(0, Math.min(gn, Math.round(gY.invert(y))));
+    guessV[i] = v;
+    const fill = (a, b) => { for (let j = a + 1; j < b; j++) guessV[j] = Math.round(guessV[a] + (guessV[b] - guessV[a]) * (j - a) / (b - a)); };
+    if (lastI != null && Math.abs(i - lastI) > 1) lastI < i ? fill(lastI, i) : fill(i, lastI);
+    let j0 = i - 1; while (j0 > 0 && guessV[j0] == null) j0--;
+    if (j0 < i - 1) fill(j0, i);
     lastI = i;
-    renderGuess();
+    zoneHint.transition().duration(200).attr('opacity', 0);
+    renderGuess(i);
   }
   const gDrag = d3.drag().container(gsvg.node()).clickDistance(0)
-    .on('start', e => { if (phase === 'draw') { lastI = null; drawAt([e.x, e.y], true); } })
-    .on('drag', e => { if (phase === 'draw') drawAt([e.x, e.y], false); })
-    .on('end', () => { lastI = null; lockI = null; });
-  const gHit = gsvg.append('rect').attr('x', gm.l).attr('y', 0).attr('width', GW - gm.l).attr('height', GH)   // from the given point on
-    .attr('fill', 'transparent').style('cursor', 'ns-resize').call(gDrag);
-  gHandles.raise().selectAll('g').on('keydown', (event, i) => {
-    const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 }[event.key];
-    if (!d || phase !== 'draw') return;
-    event.preventDefault();
-    guessV[i] = clampV(guessV[i] + d); touched[i] = true; renderGuess();
-  }).attr('pointer-events', 'none');
+    .on('start', e => { if (phase === 'draw') { lastI = null; drawAt([e.x, e.y]); } })
+    .on('drag', e => { if (phase === 'draw') drawAt([e.x, e.y]); })
+    .on('end', () => { lastI = null; liveLabel.text(''); });
+  const gHit = gsvg.append('rect').attr('x', gm.l).attr('y', 0).attr('width', GW - gm.l).attr('height', GH)
+    .attr('fill', 'transparent').style('cursor', 'crosshair').call(gDrag);
 
   // Reveal: the real line draws period by period; with each step the map's tide moves to that period,
   // and the orange outlines show the neighbourhoods that went under in that step.
   function reveal() {
-    if (phase !== 'draw' || !anyTouched()) return;
+    if (phase !== 'draw' || drawn() !== L) return;
     phase = 'reveal';
     gHit.style('cursor', null).on('.drag', null);
-    gHandles.selectAll('g').attr('tabindex', null).style('cursor', null);
-    gHandles.selectAll('.ring').interrupt().attr('opacity', 0);
     zone.transition().duration(400).attr('opacity', 0.35);
+    liveLabel.text('');
+    pulse.interrupt().attr('opacity', 0);
     [tag, task].forEach(el => el.style('max-height', '0px').style('opacity', 0).style('margin-bottom', '-8px'));
     styleGo(false); goBtn.text('…');
     skipBtn.style('visibility', 'hidden');
     mapCol.style('opacity', 1);
-    gKey.html('').attr('transform', `translate(${GW - gm.r + 22},${gm.t - 14})`);
-    [['your guess', theme.accent, 0], ['what happened', theme.depth.deep, 1]].forEach(([t, c, k]) => {
+    gKey.attr('transform', `translate(${GW - gm.r + 22},${gm.t - 14})`);
+    [['your guess', GUESS, 0], ['what happened', theme.depth.deep, 1]].forEach(([t, c, k]) => {
       const g = gKey.append('g').attr('transform', `translate(0,${k * 15})`);
       g.append('circle').attr('cx', -6).attr('cy', -3.5).attr('r', 4).attr('fill', c);
       g.append('text').attr('x', -14).attr('text-anchor', 'end').attr('fill', c).style('font', `700 11px ${theme.font}`).text(t);
@@ -1166,9 +1156,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const SEG = reduceMotion ? 0 : 1300, DRAW = SEG * 0.8;
     const labelAt = i => {      // the real number, on the side away from the guess
       const [x, y] = xy(i, truth[i]), below = guessV[i] > truth[i];
-      gTruth.append('text').attr('x', x).attr('y', below ? y + 20 : y - 13).attr('text-anchor', 'middle')
+      gTruth.append('text').attr('x', x).attr('y', below ? y + 19 : y - 11).attr('text-anchor', 'middle')
         .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-        .style('font', `800 14px ${theme.font}`).attr('opacity', 0).text(truth[i])
+        .style('font', `800 13px ${theme.font}`).attr('opacity', 0).text(truth[i])
         .transition().duration(SEG ? 250 : 0).attr('opacity', 1);
     };
     for (let k = 1; k <= L; k++) setTimeout(() => {
@@ -1188,19 +1178,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   }
   function showResult() {
     phase = 'done';
+    // The answer repeats the question's own terms: the budget, the home, the period, the count and out of how many
     const g = guessV[L], r = truth[L], when = periodLabel(P[L]);
-    const nb = n => `${n} neighbourhood${n === 1 ? '' : 's'}`;
-    const score = g === r ? `Spot on: <span style="color:${theme.depth.deep}">${nb(r)}</span> by ${when}.`
-      : `You guessed <span style="color:${theme.accent}">${nb(g)}</span> by ${when}. ` +
-        `The real answer: <span style="color:${theme.depth.deep}">${r}</span>.`;
-    // the "why", only as far as the data goes: did reach rise first, because homes got cheaper?
-    const roseFirst = truth[1] > truth[0], cheaper = typicalG[1] < typicalG[0];
-    const why = roseFirst
-      ? `First it got easier${cheaper ? `, as homes got cheaper until ${R.PERIODS[P[1]][1]}` : ''}. ` +
-        `Then ${underLast} neighbourhoods slipped out of reach in one go.`
-      : `${underLast} neighbourhoods slipped out of reach in ${when} alone.`;
-    result.html(`<div style="font-weight:800;font-size:17px;line-height:1.35;margin-bottom:4px">${score}</div><div>${why}</div>`)
-      .style('opacity', 1);
+    const answer = `In ${when}, AED&nbsp;${M}&nbsp;million buys a typical ${G.size}&nbsp;m² apartment in ` +
+      `<span style="color:${theme.depth.deep}">${r < truth[0] ? 'just ' : ''}${r} of the ${gn}</span> neighbourhoods.`;
+    const yours = g === r ? `<span style="color:${GUESS}">You guessed ${g}: spot on.</span>`
+      : `<span style="color:${GUESS}">You guessed ${g}.</span>`;
+    result.html(`<div style="font-weight:800;font-size:16.5px;line-height:1.35">${answer}</div>` +
+      `<div style="font-weight:700;margin-top:4px">${yours}</div>`).style('opacity', 1);
     goBtn.text('Explore the map →'); styleGo(true);
   }
   function leave(continueScene) {
