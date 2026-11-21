@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · flats only (no offices or hotel rooms) · 2026-11-21';
+export const BUILD = 'View B · shrinking floor plan, two hotspots, map zoom back · 2026-11-21';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -170,23 +170,24 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // controls, the map, its key) and the panel on the right (the finding, two filters, the reach chart).
   // Narrow: everything stacked.
   const wide = width >= 900;
-  const colGap = 22, rowGap = 10;
+  const colGap = 22, rowGap = 8;
   root.style('display', 'flex').style('flex-direction', 'column').style('gap', `${rowGap}px`)
     .style('width', `${width}px`).style('height', `${height}px`);
 
   // 0. The title: what this is about in one line, and what to do with it
   const header = root.append('div').style('flex', 'none');
-  const titleRow = header.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '12px');
+  const titleRow = header.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '6px 14px')
+    .style('flex-wrap', 'wrap');
   titleRow.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.12em')
     .style('text-transform', 'uppercase').style('color', '#ffffff').style('background', theme.depth.deep)
     .style('padding', '3px 9px').style('border-radius', '999px').style('flex', 'none').text('The Sea · 2015–2026');
   titleRow.append('div').attr('role', 'heading').attr('aria-level', 2)
-    .style('font', `800 25px/1.15 ${theme.font}`).style('letter-spacing', '-0.01em')
+    .style('font', `800 23px/1.15 ${theme.font}`).style('letter-spacing', '-0.01em').style('flex', 'none')
     .text('How much of Dubai can your budget keep above water?');
   // The description, in the map's own colours: the words sand and water look like the map's sand and water
   const SAND_WORD = '#a8803a';
-  const sub = header.append('div').style('font', `500 ${theme.size.label + 1.5}px/1.45 ${theme.font}`)
-    .style('color', theme.depth.deep).style('margin-top', '3px');
+  const sub = titleRow.append('div').style('font', `500 ${theme.size.label}px/1.4 ${theme.font}`)
+    .style('color', theme.depth.deep).style('flex', '1 1 360px').style('min-width', '0');
   const describe = (size, word) => sub.html(`Your budget is the tide line. ` +
     `<strong style="color:${SAND_WORD}">Sand</strong> is where it still buys a typical ${size} m² ${word}; ` +
     `<strong style="color:${theme.depth.deep}">water</strong> is where it no longer does. Drag it and watch the coast move.`);
@@ -198,7 +199,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('gap', `${colGap}px`).style('flex', 'none');
   const panelW = wide ? Math.round(Math.max(360, Math.min(440, width * 0.33))) : width;
   const mapW = wide ? width - panelW - colGap : width;
-  const stripH = 50;
+  const stripH = 46;
   const mapH = wide ? bodyH - stripH : Math.max(360, bodyH - 640 - colGap - stripH);
   const panelH = wide ? bodyH : 640;
 
@@ -244,7 +245,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('viewBox', `0 0 ${mapW} ${mapH}`).attr('role', 'img')
     .attr('aria-label', 'Map of Dubai neighbourhoods: sand where your budget buys a typical home, water where it does not')
     .style('display', 'block').style('position', 'absolute').style('left', 0).style('top', 0);
-  const projection = d3.geoMercator().fitExtent([[14, 14], [mapW - 14, mapH - 14]],
+  const projection = d3.geoMercator().fitExtent([[10, 8], [mapW - 10, mapH - 8]],
     { type: 'FeatureCollection', features: frameFeatures });
   const path = d3.geoPath(projection);
 
@@ -450,6 +451,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const gEq = chart.append('g');
   const gDots = chart.append('g').attr('pointer-events', 'none');
   const gTrace = chart.append('g').attr('pointer-events', 'none');
+  const gPlan = chart.append('g').attr('pointer-events', 'none');     // the shrinking floor plan (top-left, always empty)
+  const gHot = chart.append('g');                                      // the two points worth hovering
+  const hotNote = chart.append('g').attr('pointer-events', 'none').attr('opacity', 0);
   const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
   chart.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
     .attr('x', v => cx(v)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
@@ -464,14 +468,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // period on the map: sand once your budget reaches it, sea-blue while it is out of reach. So the bar
   // shows where the next neighbourhoods come into reach before you drag. The orange notch is the one
   // you clicked.
-  const labW = 116, trackY = 21;
+  const labW = 116, trackY = 20;
   const ssvg = strip.append('svg').attr('width', mapW).attr('height', stripH).style('display', 'block').style('overflow', 'visible');
   ssvg.append('defs').append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
     .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
   const barX = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([labW + 12, mapW - 14]).clamp(true);
-  ssvg.append('text').attr('x', 2).attr('y', 12).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
+  ssvg.append('text').attr('x', 2).attr('y', 11).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
     .style('letter-spacing', '0.08em').text('YOUR BUDGET');
-  const sVal = ssvg.append('text').attr('x', 2).attr('y', 37).attr('fill', theme.ink)
+  const sVal = ssvg.append('text').attr('x', 2).attr('y', 35).attr('fill', theme.ink)
     .style('font', `800 21px ${theme.font}`).style('font-variant-numeric', 'tabular-nums');
   const sHit = ssvg.append('rect').attr('x', barX.range()[0] - 10).attr('y', 2).attr('width', barX.range()[1] - barX.range()[0] + 20)
     .attr('height', 40).attr('fill', 'transparent').style('cursor', 'pointer');
@@ -481,7 +485,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('fill', theme.depth.deep).attr('pointer-events', 'none');
   const gNotch = ssvg.append('g');
   ssvg.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
-    .attr('x', v => barX(v)).attr('y', trackY + 23).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .attr('x', v => barX(v)).attr('y', trackY + 22).attr('text-anchor', 'middle').attr('fill', theme.quiet)
     .style('font-size', '10.5px').text(v => short$(v));
   const knob = ssvg.append('g').attr('tabindex', 0).attr('role', 'slider')
     .attr('aria-label', 'Your budget. Arrow keys change it.')
@@ -777,10 +781,89 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       }).order();
     lines.select('.ln').attr('stroke', d => pcol(d.p)).attr('stroke-width', widthOf).attr('d', d => step(d.pts));
     lines.select('.hit').attr('d', d => step(d.pts));
+    drawHotspots(s, nowI, thenI);
 
     drawNotches(s);
     placeBudget(s.budget, !!prev && !dragging);
     drawTrace(cur);
+  }
+
+  // The niche: homes shrink. The space your budget buys (budget / price per m²), then vs now, drawn as two
+  // nested floor plans to the same scale (area = m²). With nothing clicked it is the typical (middle)
+  // neighbourhood; click a neighbourhood and it is that one. It sits in the chart's top-left corner, which
+  // the curves can never reach.
+  function drawPlan(s, c) {
+    gPlan.selectAll('*').remove();
+    const same = s.thenPeriod === s.period;
+    const perM2 = Sp => c ? (charted(Sp.get(c)) ? Sp.get(c).edge / s.size : null) : d3.median(C.set, x => Sp.get(x).edge) / s.size;
+    const m2 = Sp => { const v = perM2(Sp); return v ? Math.round(s.budget / v) : null; };
+    const a = same ? null : m2(Sthen), z = m2(S);
+    if (z == null) return;
+    const big = Math.max(a || 0, z), k = Math.min(6, 62 / Math.sqrt(big)), side = v => k * Math.sqrt(v);
+    const x0 = cm.l + 8, base = cm.t + 90;
+    gPlan.append('text').attr('x', x0).attr('y', cm.t + 10).attr('fill', theme.ink).style('font', `700 11.5px ${theme.font}`)
+      .text(`The home ${aed(s.budget)} buys${c ? ` in ${shortName(nameOf(c))}` : ', typical area'}`);
+    if (a != null) gPlan.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
+      .attr('fill', '#f1f4f8').attr('stroke', '#8493a5').attr('stroke-width', 1.2).attr('stroke-dasharray', '3 2');
+    gPlan.append('rect').attr('x', x0).attr('y', base - side(z)).attr('width', side(z)).attr('height', side(z))
+      .attr('fill', theme.depth.deep).attr('fill-opacity', 0.88);
+    const lx = x0 + side(big) + 8;
+    const yA = base - side(a || 0) + 10, yZ = Math.max(base - side(z) + 10, a != null ? yA + 15 : 0);
+    if (a != null) gPlan.append('text').attr('x', lx).attr('y', yA).attr('fill', '#5f6f80').style('font', `600 11.5px ${theme.font}`)
+      .text(`${a} m² in ${periodLabel(s.thenPeriod)}`);
+    gPlan.append('text').attr('x', lx).attr('y', yZ).attr('fill', theme.depth.deep).style('font', `800 12.5px ${theme.font}`)
+      .text(`${z} m²${same ? ` in ${periodLabel(s.period)}` : ' now'}`);
+  }
+
+  // Two points on the curves that say something; nothing else on the lines reacts.
+  //  * The biggest loss: the budget at which the most neighbourhoods fell out of reach between then and now.
+  //  * The one that got cheaper: the cheapest neighbourhood now, shown only if it costs less than it did then.
+  // Hover a ring to read it; click to go there (the budget, or the neighbourhood).
+  function drawHotspots(s, nowI, thenI) {
+    const hots = [];
+    if (nowI && thenI) {
+      const at = (d, b) => d3.bisectRight(d.edges, b);
+      let best = null;
+      for (const b of [...nowI.edges, ...thenI.edges]) {
+        if (b < BUDGET_MIN || b > BUDGET_MAX) continue;
+        const a = at(thenI, b), z = at(nowI, b);
+        if (!best || a - z > best.a - best.z) best = { b, a, z };
+      }
+      if (best && best.a - best.z >= 3) hots.push({ x: cx(best.b), y: cy((best.a + best.z) / 2), act: () => ev.emit('budget', ceilBudget(best.b)),
+        lines: [`The biggest loss is at ${aed(ceilBudget(best.b))}`,
+          `${best.a} neighbourhoods in ${periodLabel(s.thenPeriod)}, ${best.z} in ${periodLabel(s.period)}:`,
+          `${best.a - best.z} slipped out of reach. Click to go there.`] });
+      const c0 = d3.least(C.set, c => S.get(c).edge), e0 = S.get(c0).edge, eThen = Sthen.get(c0).edge;
+      const nCheaper = C.set.filter(c => S.get(c).edge < Sthen.get(c).edge).length;
+      if (e0 < eThen && e0 >= BUDGET_MIN && e0 <= BUDGET_MAX) hots.push({ x: cx(e0), y: cy(1), c: c0, act: () => ev.emit('select', c0),
+        lines: [`${nCheaper === 1 ? 'The only one that got cheaper' : `One of ${nCheaper} that got cheaper`}: ${shortName(nameOf(c0))}`,
+          `Typical ${s.size} m²: ${aed(eThen)} in ${periodLabel(s.thenPeriod)}, ${aed(e0)} now.`,
+          `Also the cheapest now. Click to find it on the map.`] });
+    }
+    const g = gHot.selectAll('g').data(hots).join(enter => {
+      const h = enter.append('g').style('cursor', 'pointer');
+      h.append('circle').attr('class', 'halo').attr('r', 11).attr('fill', '#ffffff').attr('fill-opacity', 0.001);
+      h.append('circle').attr('r', 6.5).attr('fill', '#ffffff').attr('stroke', theme.ink).attr('stroke-width', 1.6);
+      h.append('circle').attr('r', 2.2).attr('fill', theme.ink);
+      return h;
+    }).attr('transform', d => `translate(${d.x},${d.y})`);
+    g.on('mouseenter', (event, d) => {
+      if (d.c) ev.emit('hover', d.c);
+      hotNote.selectAll('*').remove();
+      const right = d.x < CW * 0.55, up = d.y > cm.t + 70;
+      const tx = right ? d.x + 14 : d.x - 14, ty = up ? d.y - 14 - (d.lines.length - 1) * 14 : d.y + 22;
+      d.lines.forEach((t, i) => hotNote.append('text').attr('x', tx).attr('y', ty + i * 14)
+        .attr('text-anchor', right ? 'start' : 'end').attr('fill', theme.ink).attr('paint-order', 'stroke')
+        .attr('stroke', '#ffffff').attr('stroke-width', 4).attr('stroke-linejoin', 'round')
+        .style('font', `${i ? 500 : 700} 11.5px ${theme.font}`).text(t));
+      hotNote.attr('opacity', 1);
+      gDots.attr('opacity', 0.15); gEq.attr('opacity', 0.15);     // the note has the floor
+    })
+      .on('mouseleave', (event, d) => {
+        hotNote.attr('opacity', 0); gDots.attr('opacity', 1); gEq.attr('opacity', cur && cur.selected ? 0 : 1);
+        if (d.c && cur && cur.hovered) ev.emit('hover', null);
+      })
+      .on('click', (event, d) => { event.stopPropagation(); hotNote.attr('opacity', 0); d.act(); });
   }
 
   function drawNotches(s) {
@@ -888,6 +971,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
         .style('font', `700 11.5px ${theme.font}`).text(shortName(nameOf(c)));
     }
+
+    drawPlan(s, c);
 
     // chips: the four periods in time order; the price is the clicked neighbourhood's, or the typical one
     const who = c ? ` in <span style="background:#fff4e8;color:${theme.ink};padding:1px 6px;border-radius:5px">${shortName(nameOf(c))}</span>` : '';
