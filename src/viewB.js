@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · drawn guess keeps its numbers · 2026-11-22';
+export const BUILD = 'View B · plain hover texts · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -665,12 +665,13 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const st = S.get(c), stThen = Sthen.get(c);
     const aka = alsoKnownAs(c) ? ` <span style="color:${theme.quiet}">· ${alsoKnownAs(c)}</span>` : '';
     const head = `<strong>${nameOf(c)}</strong>${aka}<br>`;
-    if (!charted(st)) return `${head}Only ${st ? st.n : 0} sale${st && st.n === 1 ? '' : 's'} in ${periodLabel(cur.period)}: too few to trust (20 needed).`;
-    const same = cur.thenPeriod === cur.period;
-    return `${head}Typical ${cur.size} m² ${homeWord()}: <strong>${aed(st.edge)}</strong>` +
+    if (!charted(st)) return `${head}Too few sales to show: ${st ? st.n : 0} in ${periodLabel(cur.period)} (20 needed).`;
+    const same = cur.thenPeriod === cur.period, land = isLand(st);
+    return `${head}A typical ${cur.size} m² ${homeWord()} here: <strong>${aed(st.edge)}</strong>` +
       (!same && charted(stThen) ? ` <span style="color:${theme.quiet}">(${aed(stThen.edge)} in ${periodLabel(cur.thenPeriod)})</span>` : '') +
-      `<br>${pctFmt(st.shareWithin)} of the ${fmt(st.n)} homes sold here are within your budget<br>` +
-      `<span style="color:${theme.quiet}">${statusOf(c, cur)}</span>`;
+      `<br><strong>${pctFmt(st.shareWithin)}</strong> of the homes sold here fit your ${aed(cur.budget)}` +
+      `<br><strong style="color:${land ? SAND_WORD : theme.depth.deep}">${land ? 'Within reach: sand on the map' : 'Out of reach: water on the map'}</strong>` +
+      `${statusOf(c, cur) ? ` <span style="color:${theme.quiet}">· ${statusOf(c, cur).toLowerCase()}</span>` : ''}`;
   }
   const kindOf = c => { const st = S.get(c); return charted(st) ? 'data' : st ? 'fog' : 'none'; };
 
@@ -735,17 +736,24 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const y = d.y, v = d.v, last = L.last, now = last && last.y !== y ? last.v : null;
     const big = Math.max(v, now || 0), k = Math.min(4.4, 54 / Math.sqrt(big)), side = m => k * Math.sqrt(m), H = Math.ceil(side(big)) + 2;
     const sq = (m, then) => `<rect x="1" y="${H - 1 - side(m)}" width="${side(m)}" height="${side(m)}" ` +
-      (then ? `fill="#f1f4f8" stroke="#8493a5" stroke-width="1.2" stroke-dasharray="3 2"` : `fill="${L.col}" fill-opacity="0.85"`) + '/>';
+      (then ? `fill="none" stroke="#5f6f80" stroke-width="1.2" stroke-dasharray="3 2"` : `fill="${L.col}" fill-opacity="0.85"`) + '/>';
     const plan = `<svg width="${Math.ceil(side(big)) + 2}" height="${H}" style="flex:none;display:block">` +
-      (now != null ? sq(v, true) + sq(now, false) : sq(v, false)) + '</svg>';
-    const when = `around ${y}${y === PARTIAL_YEAR ? ' (to Aug)' : ''}`;
+      (now != null ? sq(now, false) + sq(v, true) : sq(v, false)) + '</svg>';
+    // a small key mark before each row: dashed = that year, filled = now
+    const mark = then => `<span style="display:inline-block;width:9px;height:9px;margin-right:6px;vertical-align:-1px;` +
+      (then ? 'border:1.2px dashed #5f6f80' : `background:${L.col};opacity:.85`) + '"></span>';
+    const row = (then, when, m) => `<div>${mark(then)}<span style="display:inline-block;min-width:36px;color:${theme.quiet}">${when}</span>` +
+      `<b>${Math.round(m)} m²</b> · ${bedsOf(m).w}</div>`;
+    const words = ['', 'one', 'two', 'three', 'four'];
     const k2 = now != null ? bedsOf(v).i - bedsOf(now).i : 0;
-    const lines = now != null
-      ? `<div>${when}: <b>${Math.round(v)} m²</b>, ${bedsOf(v).w}</div><div>now: <b>${Math.round(now)} m²</b>, ${bedsOf(now).w}</div>` +
-        (k2 ? `<div style="color:${theme.quiet}">${Math.abs(k2)} bedroom${Math.abs(k2) > 1 ? 's' : ''} ${k2 > 0 ? 'lost' : 'gained'}</div>` : '')
-      : `<div>${when}: <b>${Math.round(v)} m²</b>, ${bedsOf(v).w}</div>`;
-    tip.html(`<div style="font-weight:700;color:${L.text};margin-bottom:4px">${L.label}</div>` +
-      `<div style="display:flex;gap:10px;align-items:flex-end">${plan}<div>${lines}</div></div>`).style('opacity', 1);
+    const verdict = k2 > 0 ? `${words[k2] || k2} bedroom${k2 > 1 ? 's' : ''} less` : k2 < 0 ? `${words[-k2] || -k2} bedroom${k2 < -1 ? 's' : ''} more` : '';
+    const yLab = y === PARTIAL_YEAR ? '2026' : String(y);
+    tip.html(`<div style="font-weight:700;color:${L.text}">${L.label}</div>` +
+      `<div style="color:${theme.quiet};margin-bottom:5px">What ${aed(cur.budget)} buys here</div>` +
+      `<div style="display:flex;gap:10px;align-items:flex-end">${plan}<div>` +
+      (now != null ? row(true, yLab, v) + row(false, 'now', now) : row(false, yLab, v)) +
+      (verdict ? `<div style="margin-top:3px;font-weight:700;color:${theme.ink}">${verdict.charAt(0).toUpperCase() + verdict.slice(1)}</div>` : '') +
+      `</div></div>`).style('opacity', 1);
     // to the left of the chart, level with the point, kept inside the view
     const rr = root.node().getBoundingClientRect(), cr = chart.node().getBoundingClientRect();
     const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
@@ -903,8 +911,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       .attr('stroke-width', t => t.p === s.thenPeriod ? 1.5 : 1).attr('stroke-opacity', t => t.p === s.thenPeriod ? 0.75 : 0.3);
     tg.select('.tide-hit').attr('d', t => t.d)
       .on('mouseenter', function () { d3.select(this.parentNode).select('.tide-line').attr('stroke-opacity', 1).attr('stroke-width', 2); })
-      .on('mousemove', (event, t) => showTip(event, `<strong>${periodLabel(t.p)} coastline</strong><br>` +
-        `<span style="color:${theme.quiet}">Where the sand ended in ${periodLabel(t.p)}.</span>`))
+      .on('mousemove', (event, t) => showTip(event, `<strong>The coast in ${periodLabel(t.p)}</strong><br>` +
+        `<span style="color:${theme.quiet}">At your budget, the sand ended here then.</span>`))
       .on('mouseleave', function (event, t) {
         hideTip();
         d3.select(this.parentNode).select('.tide-line')
@@ -979,8 +987,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     (dragging || reduceMotion ? g : g.transition().duration(700).ease(d3.easeSinInOut)).attr('transform', d => `translate(${barX(d.e)},0)`);
     g.on('mousemove', (event, d) => {
       if (cur.hovered !== d.c) ev.emit('hover', d.c);
-      showTip(event, `<strong>${nameOf(d.c)}</strong><br>Typical ${cur.size} m² ${homeWord()}: <strong>${aed(d.e)}</strong> in ${periodLabel(cur.period)}` +
-        `<br><span style="color:${theme.quiet}">${d.e <= cur.budget ? 'Within your budget' : `${aed(d.e - cur.budget)} above your budget`}</span>`);
+      showTip(event, `<strong>${nameOf(d.c)}</strong><br>A typical ${cur.size} m² ${homeWord()} here: <strong>${aed(d.e)}</strong> ` +
+        `<span style="color:${theme.quiet}">(${periodLabel(cur.period)})</span><br>` +
+        (d.e <= cur.budget ? `<strong style="color:${SAND_WORD}">Within your budget</strong>`
+          : `<strong style="color:${theme.depth.deep}">${aed(d.e - cur.budget)} more than your budget</strong>`));
     })
       .on('mouseleave', () => { if (cur && cur.hovered) ev.emit('hover', null); hideTip(); })
       .on('click', (event, d) => ev.emit('select', cur.selected === d.c ? null : d.c));
@@ -1125,7 +1135,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       .text(e => `${Math.round(e.v)} m²`)
       .on('mouseenter', (event, e) => outlineRing(e.L.ring)).on('mouseleave', () => outlineRing(null))
       .call(p => go(p).attr('y', e => e.y))
-      .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? e.L.label : `${e.L.label}: ${RINGS[e.L.ring].desc}, ${RINGS[e.L.ring].members.length} neighbourhoods`); });
+      .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? `${e.L.label}: what your budget buys there now` : `${e.L.label}: ${RINGS[e.L.ring].members.length} of the 27 neighbourhoods, grouped by their 2015–17 price`); });
   }
 
   // The period buttons show the typical 80 m² price in each period (the clicked neighbourhood's, or the
