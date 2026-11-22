@@ -1297,18 +1297,28 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('letter-spacing', '0.1em').style('text-transform', 'uppercase').style('color', GUESS)
     .html(`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${GUESS};` +
       `margin-right:8px;vertical-align:1px"></span>Before the map: make a guess`);
-  gx.append('div').style('font', `800 22px/1.2 ${theme.font}`)
+  const gHead = gx.append('div').style('font', `800 22px/1.2 ${theme.font}`)
     .text(`In how many neighbourhoods can ${M}\u00a0million\u00a0AED buy a typical apartment?`);
-  gx.append('div').style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').style('color', theme.ink)
+  const gLede = gx.append('div').style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').style('color', theme.ink)
     .html(`In ${periodLabel(P[0])}: <strong>${truth[0]}&nbsp;of the&nbsp;${gn}</strong> main neighbourhoods, where a typical ` +
       `${G.size}&nbsp;m² apartment cost ${M}&nbsp;million&nbsp;AED or less.`);
   const task = fold(gx.append('div')).style('max-height', '48px').style('font', `700 ${theme.size.label + 1}px/1.45 ${theme.font}`)
     .style('color', GUESS).text(`Draw your guess up to ${periodLabel(P[L])}.`);
 
-  const usedTop = d3.sum(gx.selectAll(':scope > div').nodes(), n => n.getBoundingClientRect().height) + 3 * 8 || 140;
-  const GW = panelW, GH = Math.max(210, Math.min(400, panelH - usedTop - 80 - 44 - 8 * 4));
+  // Nothing in this column may shrink (a squeezed line gets clipped), so the chart takes what is left.
+  // On a short screen the words get a little smaller first, so the chart keeps room to draw in.
+  gx.selectAll(':scope > div').style('flex', 'none');
+  const measureTop = () => d3.sum(gx.selectAll(':scope > div').nodes(), n => n.getBoundingClientRect().height) + 3 * 8 || 140;
+  let usedTop = measureTop();
+  const room = () => panelH - usedTop - 80 - 44 - 8 * 4;
+  if (room() < 220) {
+    tag.style('font-size', '13px'); gHead.style('font-size', '19px');
+    gLede.style('font-size', `${theme.size.label}px`); task.style('font-size', `${theme.size.label}px`);
+    usedTop = measureTop();
+  }
+  const GW = panelW, GH = Math.max(150, Math.min(400, room()));
   const gm = { l: 28, r: 46, t: 26, b: 30 };
-  const gsvg = gx.append('svg').attr('width', GW).attr('height', GH).style('display', 'block')
+  const gsvg = gx.append('svg').attr('width', GW).attr('height', GH).style('display', 'block').style('flex', 'none')
     .style('touch-action', 'none').style('overflow', 'visible').style('user-select', 'none');
   const gX = d3.scalePoint().domain(P).range([gm.l + 16, GW - gm.r]);
   const gY = d3.scaleLinear().domain([0, gn]).range([GH - gm.b, gm.t]);
@@ -1355,9 +1365,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   }
   if (phase === 'draw') beat();
 
-  const result = gx.append('div').style('min-height', '64px').style('opacity', 0).style('transition', 'opacity .5s')
+  const result = gx.append('div').style('flex', 'none').style('min-height', '64px').style('opacity', 0).style('transition', 'opacity .5s')
     .style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').attr('aria-live', 'polite');
-  const row = gx.append('div').style('display', 'flex').style('align-items', 'center').style('gap', '16px');
+  const row = gx.append('div').style('flex', 'none').style('display', 'flex').style('align-items', 'center').style('gap', '16px');
   const goBtn = row.append('button').attr('type', 'button').text('Show me').attr('disabled', true)
     .style('font', `700 ${theme.size.label}px ${theme.font}`).style('padding', '9px 18px').style('border', '0')
     .style('border-radius', '999px').style('transition', 'background-color .2s, color .2s');
