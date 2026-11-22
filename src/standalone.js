@@ -1,8 +1,8 @@
 // src/standalone.js
 // Runs View B on its own page: the public link (index.html) and the dev page (dev/viewB.html).
 // It stands in for main.js: it keeps a local state and applies the view's own events to it.
-// When the window changes size (full screen, a resized window, the joint page resizing its frame) the view
-// is laid out again at the new size and keeps its state; a reader still on the guess starts the guess again.
+// When the window changes size (full screen, a resized window) the view is laid out again at the new size
+// and keeps its state; a reader still on the guess starts the guess again. (The joint page never resizes it.)
 import { loadAll } from './load.js';
 import theme from './theme.js';
 import { createViewB } from './viewB.js';
@@ -32,15 +32,19 @@ export async function runViewB(el, { onEvent = () => {}, chrome = 0 } = {}) {
   }
   build();
 
+  // The old layout is never shown at the wrong size: it fades out in the same frame the window changes,
+  // and the view comes back laid out for the new size once the window has settled.
   let t;
   addEventListener('resize', () => {
+    const s = sizeNow(), same = Math.abs(s.width - size.width) < 2 && Math.abs(s.height - size.height) < 2;
     clearTimeout(t);
+    if (same) { el.style.transition = 'opacity .2s'; el.style.opacity = ''; return; }
+    el.style.transition = 'none'; el.style.opacity = 0;
     t = setTimeout(() => {
-      const s = sizeNow();
-      if (Math.abs(s.width - size.width) < 2 && Math.abs(s.height - size.height) < 2) return;
-      size = s; guessFirst = guessFirst && view.guessing;
+      size = sizeNow(); guessFirst = guessFirst && view.guessing;
       view.destroy(); build();
-    }, 200);
+      requestAnimationFrame(() => { el.style.transition = 'opacity .25s'; el.style.opacity = ''; });
+    }, 180);
   });
   window.__viewB = { get view() { return view; }, get state() { return state; }, set };   // for automated checks
   return view;
