@@ -1,0 +1,53 @@
+/* Investor view — styles. Colours are CSS variables so the dark theme only redefines them.
+   Joint-page copy: same view by zmashd, colours matched to the Rising Tide palette (ink, blue, teal, sand; orange marks the focus). */
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+  --bg:#f5f7fa;--ink:#16233b;--mut:#5b6b85;--grid:#16233b1f;--acc:#e07a1f;--card:#ffffff;--soft:#16233b0a;--c1:#a8803a;--c2:#178f86;
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){color-scheme:dark;--bg:#0b1626;--ink:#eef2f7;--mut:#9fb0c6;--grid:#ffffff1f;--acc:#f0913a;--card:#13233a;--soft:#ffffff0d;--c1:#e0b25e;--c2:#4fc4b6}
+}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0b1626;--ink:#eef2f7;--mut:#9fb0c6;--grid:#ffffff1f;--acc:#f0913a;--card:#13233a;--soft:#ffffff0d;--c1:#e0b25e;--c2:#4fc4b6}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
+main{max-width:1160px;margin:0 auto;padding:16px 16px 36px}
+h1{font-size:clamp(20px,2.5vw,26px);margin:0 0 2px}.sub{margin:0 0 10px;color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--grid);border-radius:12px;padding:12px 14px;margin:10px 0}
+h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin:0 0 8px}
+h3{font-size:11.5px;margin:0 0 5px;color:var(--ink)}.cap{margin:-2px 0 6px;color:var(--mut);font-size:12px}
+/* top: controls + legend */
+.top{display:grid;grid-template-columns:1fr 280px;gap:12px;align-items:stretch;margin-top:10px}
+.top .card{margin:0;display:flex;flex-direction:column;justify-content:space-between}
+.grid-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
+@media(max-width:960px){.grid-controls{grid-template-columns:1fr 1fr}.top{grid-template-columns:1fr}}
+@media(max-width:540px){.grid-controls{grid-template-columns:1fr}}
+.ctrl-col{display:flex;flex-direction:column;gap:4px}
+.row{display:flex;flex-wrap:wrap;gap:5px}
+.hint{margin:4px 0 0;font-size:11px;color:var(--mut);line-height:1.3}
+button{font:600 11.5px system-ui,sans-serif;color:var(--ink);background:var(--soft);border:1px solid var(--grid);border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--acc)}button.on{background:var(--ink);color:var(--card);border-color:var(--ink)}
+#badge{margin-top:10px;font-size:11px;color:var(--mut);border-top:1px solid var(--grid);padding-top:6px}
+.lgb{font-size:11px;color:var(--mut);line-height:1.3}.lgb h2{margin-bottom:6px}.lgb b{color:var(--ink);font-size:11.5px}.lgb .it{margin:0 0 6px}
+.ph{display:flex;gap:6px;align-items:center;margin:2px 0}.ph i{flex:none;width:14px;height:4px;border-radius:2px}.ph small{opacity:.85}
+.wl{display:flex;gap:8px;align-items:flex-end;margin-top:2px}.wl span{text-align:center;font-size:10px}.wl i{display:block;background:var(--ink);border-radius:2px;width:24px;margin:0 auto 2px}
+/* detail chart + desk */
+.detail{display:grid;grid-template-columns:1fr 232px;gap:14px;align-items:start}
+@media(max-width:900px){.detail{grid-template-columns:1fr}}
+.desk{background:var(--soft);border:1px solid var(--grid);border-radius:10px;padding:10px 12px}
+.desk h4{margin:0 0 2px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.desk .inst+.inst{margin-top:12px;border-top:1px solid var(--grid);padding-top:8px}
+.desk p{margin:3px 0 0;font-size:11.5px;color:var(--mut);line-height:1.35}
+.tape{display:flex;justify-content:flex-end;gap:14px;overflow:hidden;white-space:nowrap;background:#0b2540;color:#dbe6f3;border-radius:8px;padding:7px 12px;margin-top:6px;font:11.5px ui-monospace,Menlo,Consolas,monospace}
+.tape b{color:#fff}.up{color:#4fc4a0}.dn{color:#f08070}.fl{color:#8aa0b8}
+.tape .new{animation:slide .35s ease-out}@keyframes slide{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+svg{width:100%;height:auto;display:block;touch-action:pan-y;fill:var(--mut)}
+svg text{font-family:system-ui,sans-serif;font-size:12px}
+.hl{paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round}
+.ax path,.ax line{stroke:var(--grid)}.ax text{fill:var(--mut)}
+.note{font-size:11px;color:var(--mut);margin:2px 0 0}
+details{border-top:1px solid var(--grid);padding:8px 0;font-size:13px}
+summary{cursor:pointer;font-weight:600;color:var(--ink)}
+details p,details li{color:var(--mut);margin:4px 0}details b{color:var(--ink)}

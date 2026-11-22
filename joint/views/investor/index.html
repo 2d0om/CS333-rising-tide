@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Investor View · Who is paying, and with what money?</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Joint-page copy of the Investor view by zmashd (github.com/zmashd/cs333_dataviz): colours matched to the team palette,
+     light theme pinned so it matches the other three views; everything else is unchanged. -->
+<!-- FILES: index.html (page text + layout) · style.css (looks) · data.js (the numbers) · main.js (all the D3 code) · writeup.js (text for the write-up sections) -->
+<main>
+<h1>Who is paying, and with what money?</h1>
+<p class="sub">Dubai property sales (all property types, 10% random sample) vs. the CBUAE policy rate, one dot per month, Jan 2015 – Aug 2026.</p>
+
+<div class="top">
+  <section class="card">
+    <div>
+      <h2>Controls</h2>
+      <div class="grid-controls">
+        <div class="ctrl-col"><h3>Playback</h3><div class="row" id="g1"></div></div>
+        <div class="ctrl-col"><h3>Time window</h3><div class="row" id="g2"></div></div>
+        <div class="ctrl-col"><h3>Display</h3><div class="row" id="g3"></div><p class="hint"><b>Smoothed</b> = 3-mo avg to calm noise. <b>Exact</b> = real count.</p></div>
+      </div>
+    </div>
+    <div id="badge">embedded snapshot · verifying live CSV…</div>
+  </section>
+  <section class="card lgb"><h2>Legend</h2><div id="leg"></div></section>
+</div>
+
+<section class="card">
+  <h2>Detail · policy rate vs. monthly sales (in the sample)</h2>
+  <div class="detail">
+    <div>
+      <svg id="v" viewBox="0 0 1000 450" role="img" aria-label="Connected scatterplot of policy rate versus monthly sales in the sample"></svg>
+      <div id="tape" class="tape"></div>
+      <p class="note">Rate = CBUAE repo rate before Jul 2020, CBUAE Base Rate from Jul 2020 (a change of instrument, not a policy move; see Data section). Counts are from a 10% sample. Tip: click any point, or drag the ▼ above the overview, to jump to that month.</p>
+    </div>
+    <aside class="desk">
+      <div class="inst"><h4>The Governor’s dial · policy rate</h4><svg id="dial" viewBox="0 0 220 160" role="img" aria-label="Dial showing the policy rate"></svg></div>
+      <div class="inst"><h4>100 sales in the sample</h4><svg id="notes" viewBox="0 0 220 130" role="img" aria-label="Sheet of 100 notes, one per sale; coloured notes have a matching mortgage registration"></svg><p id="notesTxt"></p>
+      <p><b>Why it matters:</b> higher rates should hit people who borrow first. If fewer sales per 100 come with a loan while total sales rise, sales are growing faster than bank lending.</p></div>
+    </aside>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Overview · choose a time window</h2>
+  <p class="cap">Drag the box or its edges, or use the period buttons. Drag the ▼ to jump to any month of the playback. Strip = mortgage registrations per 100 sales (100% stacked, 3-month mean). Top-right: the window’s value, or the hovered month’s. Ribbon = market phase.</p>
+  <svg id="ov" viewBox="0 0 1000 160" role="img" aria-label="Stacked-area overview of mortgage registrations per sale with brush"></svg>
+</section>
+
+<details open>
+  <summary>Encoding (marks and channels)</summary>
+  <ul>
+    <li><b>Detail — connected scatterplot:</b> one dot per month; x = CBUAE policy rate (%), y = monthly sales in the sample. Segments join consecutive months, so the line is the market’s path through time.</li>
+    <li><b>Line width</b> = mortgage registrations per 100 sales that month (3-month mean). <b>Colour</b> = market phase (five periods defined by the rate path).</li>
+    <li><b>Dashed grey arrow</b> = schematic textbook expectation (higher rates → fewer sales); faint until you hover it.</li>
+    <li><b>The Governor’s dial</b> = the policy rate of the month in focus (needle angle, 0–6%). <b>Sheet of 100 notes</b> = how many of every 100 sales had a matching mortgage registration (coloured notes). <b>Tape</b> = the last three months in focus: rate, sales and direction of change.</li>
+    <li><b>Overview — 100% stacked area:</b> x = month; bottom band (teal) = mortgage registrations per sale, top band (grey) = “no matching mortgage registration”. Brush = selected window; ribbon = market phase.</li>
+  </ul>
+</details>
+
+<details>
+  <summary>Interaction guide</summary>
+  <ul>
+    <li><b>Brush</b> the overview or use the team’s period buttons (2015–17, 2018–20, 2021–23, 2024–26); releasing snaps to whole months with an elastic ease (d3.easeBackOut).</li>
+    <li><b>Play / Pause / Reset / − +:</b> replays the window month by month (1× = 0.4 s per month; − and + change the speed). The dial needle swings with spring overshoot, and the tape and notes update.</li>
+    <li><b>Jump to a month:</b> click any point on the chart, or drag the ▼ marker above the overview. Play then continues from there.</li>
+    <li><b>Hover</b> the chart: flashlight lines project the month to both axes and mark it on the overview; dial, notes, tape and the overview corner all show that month.</li>
+    <li><b>Linking:</b> the window is broadcast on <code>BroadcastChannel('rising-tide')</code> as {from,to} month indexes (0 = Jan 2015). Final linking method still to be agreed with the team.</li>
+  </ul>
+</details>
+
+<details><summary>Value added and interpretation</summary><div id="val"></div></details>
+<details><summary>Lecture idioms</summary>
+  <p><b>Overview + Detail</b> (Week 7): a <b>Connected Scatterplot</b> as detail view and a <b>Stacked-Area time axis</b> as overview, tied by <b>brushing and linking</b>.</p>
+</details>
+<details><summary>Data, cleaning and external sources</summary><div id="dat"></div></details>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="data.js"></script>
+<script src="main.js"></script>
+<script src="writeup.js"></script>
+</body>
+</html>
