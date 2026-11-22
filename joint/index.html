@@ -23,7 +23,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 #bar { position: fixed; left: 0; right: 0; top: 0; height: var(--bar); display: flex; align-items: center; gap: 22px;
   padding: 0 12px 0 20px; background: #fff; border-bottom: 1px solid var(--line); z-index: 3; }
-.name { font: 600 17px var(--serif); white-space: nowrap; }
+.name { font: 600 17px var(--serif); white-space: nowrap; color: var(--ink); padding: 6px 8px; margin-left: -8px; border-radius: 8px; transition: background-color .2s; }
+.name:hover { background: #f1f4f8; }
 #tabs { position: relative; flex: 1; display: flex; gap: 4px; padding: 4px; border-radius: 11px; background: #f1f4f8; }
 #pill { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 8px; background: var(--pc, transparent);
   box-shadow: inset 0 0 0 1px var(--pb, transparent); pointer-events: none; }
@@ -154,7 +155,7 @@ body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
   </div>
 </section>
 <header id="bar">
-  <span class="name">Rising Tide</span>
+  <button type="button" class="name" id="home" title="Back to the first page">Rising Tide</button>
   <nav id="tabs" aria-label="The four views"><span id="pill"></span></nav>
   <a id="alone" href="../" target="_blank" rel="noopener">Open on its own page ↗</a>
 </header>
@@ -439,7 +440,7 @@ async function go(i, { push = true } = {}) {
 }
 
 addEventListener('keydown', e => {
-  if (e.metaKey || e.ctrlKey || e.altKey || $('front')) return;          // the first page has its own keys
+  if (e.metaKey || e.ctrlKey || e.altKey || document.body.classList.contains('front')) return;   // the first page has its own keys
   if (document.activeElement && document.activeElement.classList.contains('tab')) document.activeElement.blur();   // the pill shows where you are
   if (/^[1-4]$/.test(e.key)) go(+e.key - 1);
   else if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(cur + 1); }
@@ -551,15 +552,33 @@ function front() {
     const key = e => { if (e.repeat || performance.now() - shownAt < 900) return;    // nothing moves on before the reader asks
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(0); } else if (/^[1-4]$/.test(e.key)) begin(+e.key - 1); };
     addEventListener('keydown', key);
-    $('begin').addEventListener('click', () => begin(0));
+    $('begin').onclick = () => begin(0);
   });
 }
 async function leaveFront() {
   const el = $('front');
   if (!reduce) await el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-3%)', opacity: 0 }],
     { duration: 480, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).finished;
-  el.remove(); document.body.classList.remove('front');
+  el.style.display = 'none'; el.getAnimations({ subtree: true }).forEach(a => a.cancel());
+  document.body.classList.remove('front');
 }
+// "Rising Tide" in the bar goes back to the first page; Begin then plays the opening again from there
+async function home() {
+  if (busy || opening || document.body.classList.contains('front')) return;
+  busy = true;
+  history.pushState(null, '', location.pathname + location.search);
+  const el = $('front');
+  document.body.classList.add('front'); el.style.display = ''; el.scrollTop = 0;
+  const target = await front();
+  await leaveFront();
+  // back to the strip, every card showing its question again, then the same opening as the first time
+  stacked = false; VIEWS.forEach(v => { v.veil.classList.remove('off'); v.veil.style.transition = 'none'; });
+  layout(); VIEWS.forEach(v => { v.veil.offsetWidth; v.veil.style.transition = ''; });
+  busy = false;
+  await intro(target);
+  VIEWS.forEach(v => { if (v.ready) { v.shown = true; v.veil.classList.add('off'); } });
+}
+$('home').addEventListener('click', home);
 
 // ---------------------------------------------------------------------
 // start: the buyer's view (or the one named in the link) rises into place once it is drawn
@@ -574,7 +593,7 @@ async function leaveFront() {
     load(VIEWS[0]);
     cur = await front();
     await leaveFront();
-  } else $('front').remove();
+  } else $('front').style.display = 'none';
   await intro(cur);
   setTimeout(preloadRest, 300);
 })();
