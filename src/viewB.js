@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · plain hover texts · 2026-11-22';
+export const BUILD = 'View B · lays itself out again on resize · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -689,7 +689,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       else ev.emit('select', cur.selected === c ? null : c);
     });
   seaRect.on('click', () => { if (cur && cur.selected) ev.emit('select', null); });
-  d3.select(window).on(`keydown.vb${Math.random().toString(36).slice(2, 7)}`, event => {
+  const keyNs = `keydown.vb${Math.random().toString(36).slice(2, 7)}`;
+  d3.select(window).on(keyNs, event => {
     if (event.key === 'Escape' && cur && cur.selected) ev.emit('select', null);
   });
 
@@ -1240,9 +1241,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     raf = visible && (!reduceMotion || fading) ? requestAnimationFrame(frame) : null;
   }
   function wake() { if (surface && !raf && visible) raf = requestAnimationFrame(frame); }
-  if (surface && 'IntersectionObserver' in window) new IntersectionObserver(es => {
+  let io = null;
+  if (surface && 'IntersectionObserver' in window) (io = new IntersectionObserver(es => {
     visible = es[es.length - 1].isIntersecting; if (visible) wake();
-  }).observe(mapBox.node());
+  })).observe(mapBox.node());
 
   const DATA_KEYS = ['period', 'thenPeriod', 'mode', 'homeType', 'money', 'dropExtremes', 'budget', 'size'];
   function apply(s) {
@@ -1493,6 +1495,16 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       apply(effective(s));
     },
     on: ev.on,
+    // still on the guess (drawing, or reading the answer)
+    get guessing() { return phase !== 'off'; },
+    // before the page lays the view out again at a new size: stop its loop, listeners and water surface
+    destroy() {
+      d3.select(window).on(keyNs, null);
+      visible = false; if (raf) cancelAnimationFrame(raf); raf = null;
+      if (io) io.disconnect();
+      clearTimeout(maskTimer);
+      if (surface) { const gl = surface.canvas.getContext('webgl'), lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext(); }
+    },
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
