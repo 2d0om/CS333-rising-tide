@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · price-group lines in three colours, key under the chart · 2026-11-22';
+export const BUILD = 'View B · price-ordered colours, bedroom insight on hover, less text · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -216,6 +216,20 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     yearCache.set(key, out);
     return out;
   }
+  // Bedrooms, to say a number of m² in words: the median size of each flat type sold in the latest period
+  // (studio, 1-, 2-, 3-bed); a home counts as the type whose size it is closest to (cut halfway between).
+  const lastP = PERIOD_KEYS[PERIOD_KEYS.length - 1];
+  const ROOM_SIZES = [['Studio', 'a studio'], ['1 B/R', 'a 1-bed'], ['2 B/R', 'a 2-bed'], ['3 B/R', 'a 3-bed']].map(([k, w], i) => ({ i, w,
+    m2: d3.median(homeSales.filter(d => d.period === lastP && d.r.property_type_en === 'Unit' && d.r.rooms_en === k), d => +d.r.procedure_area) }))
+    .filter(d => d.m2 > 0);
+  const bedsOf = m2 => {
+    const R0 = ROOM_SIZES;
+    if (!R0.length) return { i: 0, w: '' };
+    if (m2 < R0[0].m2 * 0.75) return { i: -1, w: 'less than a studio' };
+    if (m2 > R0[R0.length - 1].m2 * 1.3) return { i: R0.length, w: `more than ${R0[R0.length - 1].w}` };
+    for (let i = 0; i < R0.length - 1; i++) if (m2 < (R0[i].m2 + R0[i + 1].m2) / 2) return R0[i];
+    return R0[R0.length - 1];
+  };
   const commYearly = (s, c) => {         // one neighbourhood, m² per AED in each 3-year window with 10+ sales
     const { pooled } = yearData(s);
     return YEARS.map(y => { const w = pooled(c, y); return { y, f: w.n >= YEAR_MIN ? 1 / w.med : null }; });
@@ -326,22 +340,19 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('margin-bottom', '-6px').style('min-height', '14px').style('white-space', 'nowrap').style('overflow', 'hidden');
   const chips = panel.append('div').style('display', 'grid').style('grid-template-columns', 'repeat(4, 1fr)').style('gap', '6px')
     .style('min-height', '48px');
-  // 3. The line chart, and its key underneath. Three clearly different colours for the three price groups
-  //    (none of them sand, sea or coral, which already mean something on the map); coral, dashed, is the
-  //    neighbourhood you clicked.
+  // 3. The line chart, and its key underneath. The three price groups on one ordered scale: the darker the
+  //    line, the pricier the areas (as on the map, where deeper water is further out of reach). Teal,
+  //    blue-violet, plum: none is sand, sea or coral, which already mean something on the map. Each is at
+  //    least 3:1 against both the sand and the sea behind it.
   const chartHead = panel.append('div').style('font', `600 ${theme.size.small + 0.5}px ${theme.font}`).style('min-height', '16px');
   const chartBox = panel.append('div').style('margin-top', '-6px');
-  const RING_COL = ['#2e9e5b', '#7b61c9', '#1f3a68'], RING_TEXT = ['#24804a', '#6a50b8', '#1f3a68'];
+  const RING_COL = ['#1f8a7e', '#5a62c4', '#3c1d5c'], RING_TEXT = RING_COL;
   const sw = (css) => `<span style="display:inline-block;vertical-align:middle;margin-right:5px;${css}"></span>`;
   const keyLine = c => sw(`width:16px;height:0;border-top:3px solid ${c};border-radius:2px`);
   panel.append('div').style('margin-top', '-8px').style('font', `500 11px/1.55 ${theme.font}`).style('color', theme.quiet)
     .html(`<div style="display:flex;flex-wrap:wrap;gap:0 12px;color:${theme.ink}">` +
       `<span>${keyLine(RING_COL[0])}Cheapest</span><span>${keyLine(RING_COL[1])}Mid-priced</span>` +
-      `<span>${keyLine(RING_COL[2])}Priciest <span style="color:${theme.quiet}">third of areas, by 2015–17 price</span></span></div>` +
-      `<div style="display:flex;flex-wrap:wrap;gap:0 12px">` +
-      `<span>${sw(`width:14px;height:9px;background:${theme.depth.shallow};opacity:.45;border-top:2px solid ${theme.depth.deep}`)}under a typical flat</span>` +
-      `<span>${sw(`width:16px;height:0;border-top:2.5px dashed ${theme.accent}`)}area you clicked</span>` +
-      `<span>3-year windows · ’26* Jan–Aug</span></div>`);
+      `<span>${keyLine(RING_COL[2])}Priciest areas <span style="color:${theme.quiet}">(2015–17 prices)</span></span></div>`);
 
   // ---------- map: data underneath, moving water and fog in the middle, names and lines on top ----------
   const legendH = 0;            // the key is a small box in the bottom-right corner, not a band
@@ -561,16 +572,16 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const hoverRule = gHover.append('line').attr('y1', cm.t).attr('y2', plotB).attr('stroke', theme.ink)
     .attr('stroke-opacity', 0.3).attr('stroke-dasharray', '3 3');
   const hoverDot = gHover.append('circle').attr('r', 4.5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-  const hoverLab = gHover.append('text').attr('y', cm.t - 9).attr('fill', theme.ink).attr('paint-order', 'stroke')
-    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `700 11px ${theme.font}`);
+  const hoverLab = gHover.append('text').attr('fill', theme.ink).attr('paint-order', 'stroke')
+    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).attr('stroke-linejoin', 'round').style('font', `700 11px ${theme.font}`);
+  const hoverL1 = hoverLab.append('tspan').attr('y', cm.t - 8);
+  const hoverL2 = hoverLab.append('tspan').attr('y', cm.t + 7).style('font-weight', 500);
   const plotHit = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.r - cm.l)
     .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
   const gEnd = chart.append('g');                                       // the line names, at the right
   chart.append('g').attr('pointer-events', 'none').selectAll('text').data(YEARS).join('text')
     .attr('x', y => yx(y)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
-    .style('font-size', '10.5px').text(y => `’${String(y).slice(2)}${y === PARTIAL_YEAR ? '*' : ''}`);
-  chart.append('text').attr('x', cm.l - 6).attr('y', cm.t - 9).attr('text-anchor', 'end').attr('fill', theme.quiet)
-    .style('font-size', '10.5px').attr('pointer-events', 'none').text('m²');
+    .style('font-size', '10.5px').text(y => `’${String(y).slice(2)}`);
   const lineOf = d3.line().defined(d => d.v != null).x(d => yx(d.y)).y(d => ym(d.v)).curve(d3.curveMonotoneX);
 
   const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];   // the budget bar's labels
@@ -722,12 +733,19 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     if (!best) { gHover.attr('opacity', 0); return; }
     hoverRule.attr('x1', yx(y)).attr('x2', yx(y));
     hoverDot.attr('cx', yx(y)).attr('cy', ym(best.d.v)).attr('fill', best.L.col);
-    const txt = `${best.L.label}, around ${y}: ${Math.round(best.d.v)} m²`;
-    const w = textW(txt, 11, 700);
-    hoverLab.attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, yx(y) - w / 2))).text(txt);
+    // the insight: that home in bedrooms, then and now (sizes from our own data, see bedsOf)
+    const v = best.d.v, last = best.L.last, now = last && last.y !== y ? last.v : null;
+    const l1 = `${best.L.label}, around ${y}${y === PARTIAL_YEAR ? ' (to Aug)' : ''}: ${Math.round(v)} m², ${bedsOf(v).w}`;
+    let l2 = '';
+    if (now != null) {
+      const k = bedsOf(v).i - bedsOf(now).i;
+      l2 = `now ${Math.round(now)} m², ${bedsOf(now).w}${k > 0 ? ` · ${k} bedroom${k > 1 ? 's' : ''} lost` : k < 0 ? ` · ${-k} bedroom${k < -1 ? 's' : ''} gained` : ''}`;
+    }
+    const w = Math.max(textW(l1, 11, 700), textW(l2, 11, 500)), x0 = Math.max(cm.l, Math.min(CW - cm.r - w, yx(y) - w / 2));
+    hoverL1.attr('x', x0).text(l1); hoverL2.attr('x', x0).text(l2);
     gHover.attr('opacity', 1); gPeak.attr('opacity', 0);
     outlineRing(best.L.ring);
-    renderPlan({ a: best.d.v, aText: `around ${y}`, z: best.L.now, zText: 'now', where: best.L.where });
+    renderPlan({ a: now == null ? null : v, aText: `around ${y}`, z: now == null ? v : now, zText: now == null ? 'now' : 'now', where: best.L.where });
   })
     .on('mouseleave', () => {
       gHover.attr('opacity', 0); gPeak.attr('opacity', 1); outlineRing(null);
@@ -840,7 +858,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     headLead.html(lead); headNums.html(nums); headFoot.html(foot);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
-    chartHead.html(`The home your budget buys, year by year <span style="font-weight:400;color:${theme.quiet}">· hover a line</span>`);
+    chartHead.html('The home your budget buys, in m²');
   }
 
   function drawLegend(s, same) {
@@ -968,15 +986,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   function drawRings(s, B, t) {
     const { rings } = yearData(s), size = s.size;
     const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
-    const periodVal = pts => {
-      const [p0, p1] = R.PERIODS[s.period];
-      const v = d3.median(pts.filter(d => d.y >= p0 && d.y <= p1 && d.v != null), d => d.v);
-      return v == null ? null : v;
-    };
+    const lastOf = pts => { const P = pts.filter(d => d.v != null); return P.length ? P[P.length - 1] : null; };
     const lines = rings.map((r, i) => {
       const pts = r.ys.map(d => ({ y: d.y, v: d.f == null ? null : d.f * B }));
       return { key: r.key, name: `${r.name} areas`, label: `${r.name} areas`, col: RING_COL[i], text: RING_TEXT[i],
-        ring: i, pts, now: periodVal(pts), where: `in ${r.name.toLowerCase()} areas` };
+        ring: i, pts, last: lastOf(pts), where: `in ${r.name.toLowerCase()} areas` };
     });
     const c = selectedOf(s);
     let sel = null;
@@ -984,7 +998,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       const pts = commYearly(s, c).map(d => ({ y: d.y, v: d.f == null ? null : d.f * B }));
       const nm = shortName(nameOf(c));
       if (pts.some(d => d.v != null)) sel = { key: 'sel', name: nm.length > 14 ? nm.slice(0, 13) + '…' : nm, label: nm,
-        col: theme.accent, text: theme.accent, ring: null, pts, now: periodVal(pts), where: `in ${nm}` };
+        col: theme.accent, text: theme.accent, ring: null, pts, last: lastOf(pts), where: `in ${nm}` };
     }
     const all = sel ? [...lines, sel] : lines;
     ringView = { lines: all };
@@ -1056,7 +1070,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     });
     gPeak.selectAll('*').remove();
     if (peak) {
-      const px = yx(peak.d.y), py = ym(peak.d.v), txt = `around ${peak.d.y}: ${Math.round(peak.d.v)} m²`, w = textW(txt, 11, 700);
+      const px = yx(peak.d.y), py = ym(peak.d.v), txt = `${Math.round(peak.d.v)} m² around ${peak.d.y}`, w = textW(txt, 11, 700);
       gPeak.append('circle').attr('cx', px).attr('cy', py).attr('r', 4).attr('fill', peak.L.col).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
       gPeak.append('text').attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, px - w / 2))).attr('y', py - 9).attr('fill', peak.L.text)
         .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `700 11px ${theme.font}`).text(txt);
@@ -1421,7 +1435,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
-    _debug: s => ({ comparable: reach(s),
+    _debug: s => ({ comparable: reach(s), rooms: ROOM_SIZES.map(d => `${d.w}: ${Math.round(d.m2)} m²`),
       rings: yearData(s).rings.map(r => ({ name: r.name, km: r.desc, members: r.members.map(c => shortName(nameOf(c))),
         m2: r.ys.map(d => d.f == null ? null : Math.round(d.f * s.budget)), n: r.ys.map(d => d.n) })),
       guess: { phase, truth, drawn: guessV.slice(), underLast, typical: typicalG } })
