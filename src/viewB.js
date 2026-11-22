@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · 1 million AED wording · 2026-11-22';
+export const BUILD = 'View B · cleaner reach chart, floor plan in the headline · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -212,8 +212,17 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const panel = body.append('div').style('width', `${panelW}px`).style('height', `${panelH}px`).style('flex', 'none')
     .style('display', 'flex').style('flex-direction', 'column').style('gap', '12px').style('min-width', '0');
 
-  // 1. The finding: one sentence with two labelled numbers
+  // 1. The finding: one sentence with two labelled numbers, and beside them the home that budget buys
+  //    (the niche: the same money buys a smaller home), as two floor plans drawn to the same scale.
   const headline = panel.append('div').style('min-height', '112px');
+  const headLead = headline.append('div').style('font-size', `${theme.size.label + 1.5}px`).style('line-height', '1.4');
+  const headRow = headline.append('div').style('display', 'flex').style('align-items', 'flex-end').style('gap', '12px')
+    .style('margin', '6px 0 5px');
+  const headNums = headRow.append('div').style('display', 'flex').style('align-items', 'flex-start').style('gap', '14px');
+  const PLAN_W = 172, PLAN_H = 64;
+  const planSvg = headRow.append('svg').attr('width', PLAN_W).attr('height', PLAN_H).attr('aria-hidden', true)
+    .style('margin-left', 'auto').style('flex', 'none').style('display', 'block').style('overflow', 'visible');
+  const headFoot = headline.append('div');
 
   // 2. Two filters, each under a plain label
   const label = t => panel.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.08em')
@@ -450,10 +459,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `600 11px ${theme.font}`).attr('pointer-events', 'none').attr('opacity', 0);
   const gEq = chart.append('g');
   const gDots = chart.append('g').attr('pointer-events', 'none');
-  const gTrace = chart.append('g').attr('pointer-events', 'none');
-  const gPlan = chart.append('g').attr('pointer-events', 'none');     // the shrinking floor plan (top-left, always empty)
-  const gHot = chart.append('g');                                      // the two points worth hovering
-  const hotNote = chart.append('g').attr('pointer-events', 'none').attr('opacity', 0);
+  const gTrace = chart.append('g').attr('pointer-events', 'none');     // the clicked neighbourhood, on the budget axis
+  const gHot = chart.append('g');                                      // the two points worth a label
+  const curvePreview = chart.append('path').attr('fill', 'none').attr('stroke-width', 2).attr('stroke-dasharray', '5 4')
+    .attr('pointer-events', 'none').attr('opacity', 0);               // a period button's line, while hovered
   const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
   chart.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
     .attr('x', v => cx(v)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
@@ -568,7 +577,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .on('mouseenter', (event, m) => { if (cur && m !== cur.mode) preview(statsFor(cur.period, { ...cur, mode: m })); })
     .on('mouseleave', endPreview);
   function preview(Sp) { previewPath.attr('d', path(coastFor(Sp))).attr('opacity', 1); coastPath.attr('opacity', 0.25); }
-  function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); }
+  function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); curvePreview.attr('opacity', 0); }
 
   // Budget: drag the knob or anywhere on the bar above the map (or in the reach chart); click to jump;
   // arrow keys on the knob. While dragging, everything follows the pointer exactly; the budget sent is rounded.
@@ -675,29 +684,29 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   };
 
   function drawHeadline(s, same, animate) {
-    // One sentence, with the two counts as big labelled numbers. The odd cases (nothing or everything
-    // in reach) are said in words, never as "0 → 0".
+    // One sentence, with the two counts as big labelled numbers and the floor plan beside them. The odd
+    // cases (nothing or everything in reach) are said in words, never as "0 → 0".
     const home = `a typical ${s.size} m² ${homeWord()}`;
     const money = `<strong>${aed(s.budget)}</strong>`;
-    const lead = `<div style="font-size:${theme.size.label + 1.5}px;line-height:1.4">`;
     const num = (v, c, t) => `<div><div style="font-size:44px;font-weight:800;line-height:1;color:${c};font-variant-numeric:tabular-nums">${v}</div>` +
       `<div style="font-size:11px;color:${theme.quiet};margin-top:3px">${t}</div></div>`;
-    const ofN = `<div style="font-size:${theme.size.small + 0.5}px;color:${theme.quiet}">of the ${C.n} neighbourhoods with enough sales to compare</div>`;
     const cheapest = Sp => d3.min(C.set, c => Sp.get(c).edge);
-    let html;
-    if (!C.n) html = `${lead}Too few sales of these homes to compare neighbourhoods.</div>`;
-    else if (C.k1 === 0 && C.k2 === 0) html = `${lead}${money} doesn't buy ${home} in any of the ${C.n} neighbourhoods` +
-      `${same ? ` in ${periodLabel(s.period)}` : ', then or now'}.</div>` +
-      `<div style="font-size:${theme.size.label}px;line-height:1.45;margin-top:8px">The cheapest needed <strong>${aed(cheapest(Sthen))}</strong>` +
-      `${same ? '' : ` in ${periodLabel(s.thenPeriod)} and <strong>${aed(cheapest(S))}</strong> in ${periodLabel(s.period)}`}.</div>`;
-    else if (C.k1 === C.n && C.k2 === C.n) html = `${lead}${money} buys ${home} in all ${C.n} neighbourhoods` +
-      `${same ? ` in ${periodLabel(s.period)}` : ', then and now'}.</div>`;
-    else html = `${lead}${money} buys ${home} in</div>` +
-      `<div style="display:flex;align-items:flex-start;gap:14px;margin:6px 0 5px">` +
-      (same ? num(C.k2, theme.depth.deep, periodLabel(s.period))
+    let lead, nums = '', foot = '';
+    if (!C.n) lead = 'Too few sales of these homes to compare neighbourhoods.';
+    else if (C.k1 === 0 && C.k2 === 0) {
+      lead = `${money} doesn't buy ${home} in any of the ${C.n} neighbourhoods${same ? ` in ${periodLabel(s.period)}` : ', then or now'}.`;
+      foot = `<div style="font-size:${theme.size.label}px;line-height:1.45">The cheapest needed <strong>${aed(cheapest(Sthen))}</strong>` +
+        `${same ? '' : ` in ${periodLabel(s.thenPeriod)} and <strong>${aed(cheapest(S))}</strong> in ${periodLabel(s.period)}`}.</div>`;
+    } else if (C.k1 === C.n && C.k2 === C.n) {
+      lead = `${money} buys ${home} in all ${C.n} neighbourhoods${same ? ` in ${periodLabel(s.period)}` : ', then and now'}.`;
+    } else {
+      lead = `${money} buys ${home} in`;
+      nums = same ? num(C.k2, theme.depth.deep, periodLabel(s.period))
         : num(C.k1, '#8493a5', periodLabel(s.thenPeriod)) + `<div style="font-size:26px;color:${theme.quiet};line-height:44px">→</div>` +
-          num(C.k2, theme.depth.deep, periodLabel(s.period))) + `</div>${ofN}`;
-    headline.html(html);
+          num(C.k2, theme.depth.deep, periodLabel(s.period));
+      foot = `<div style="font-size:${theme.size.small + 0.5}px;color:${theme.quiet}">of the ${C.n} neighbourhoods with enough sales to compare</div>`;
+    }
+    headLead.html(lead); headNums.html(nums); headFoot.html(foot);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
     chartHead.html(`Neighbourhoods within reach, by budget <span style="font-weight:400;color:${theme.quiet}">· click to set your budget</span>`);
@@ -715,11 +724,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
 
   let heavyTimer = null;
   function drawHeavy(s, same) {
-    // Earlier coastlines (tide marks): the "then" one clearer, the others faint. Click one to compare against it.
+    // Earlier coastlines (tide marks): the "then" one (2015–17) clearer, the others faint.
     const earlier = PERIOD_KEYS.slice(0, PERIOD_KEYS.indexOf(s.period));
     const tides = earlier.map(p => ({ p, d: path(coastFor(statsFor(p, s))) || '' }));
     const tg = gTide.selectAll('g').data(tides, t => t.p).join(enter => {
-      const g = enter.append('g').style('cursor', 'pointer');
+      const g = enter.append('g');
       g.append('path').attr('class', 'tide-line').attr('fill', 'none').attr('stroke', theme.coastline)
         .attr('stroke-dasharray', '1 3.5').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
       g.append('path').attr('class', 'tide-hit').attr('fill', 'none').attr('stroke', 'transparent')
@@ -731,13 +740,12 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     tg.select('.tide-hit').attr('d', t => t.d)
       .on('mouseenter', function () { d3.select(this.parentNode).select('.tide-line').attr('stroke-opacity', 1).attr('stroke-width', 2); })
       .on('mousemove', (event, t) => showTip(event, `<strong>${periodLabel(t.p)} coastline</strong><br>` +
-        `<span style="color:${theme.quiet}">${t.p === s.thenPeriod ? 'The period you are comparing against.' : `Click to compare against ${periodLabel(t.p)}.`}</span>`))
+        `<span style="color:${theme.quiet}">Where the sand ended in ${periodLabel(t.p)}.</span>`))
       .on('mouseleave', function (event, t) {
         hideTip();
         d3.select(this.parentNode).select('.tide-line')
           .attr('stroke-opacity', t.p === s.thenPeriod ? 0.75 : 0.3).attr('stroke-width', t.p === s.thenPeriod ? 1.5 : 1);
-      })
-      .on('click', (event, t) => ev.emit('thenPeriod', t.p));
+      });
 
     drawCurve(s, same);
   }
@@ -756,7 +764,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const role = p => p === s.period ? 'now' : (!same && p === s.thenPeriod) ? 'then' : 'other';
     const widthOf = d => ({ now: 3, then: 2.4, other: 1.1 })[role(d.p)];
 
-    const yt = cy.ticks(4).filter(Number.isInteger);
+    const yt = cy.ticks(4).filter(v => Number.isInteger(v) && v > 0);
     gGrid.selectAll('line').data(yt).join('line').attr('x1', cm.l).attr('x2', CW - cm.r)
       .attr('y1', v => cy(v)).attr('y2', v => cy(v)).attr('stroke', theme.grid);
     gGrid.selectAll('text').data(yt).join('text').attr('x', cm.l - 6).attr('y', v => cy(v)).attr('dy', '0.35em')
@@ -772,7 +780,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     } else band.attr('opacity', 0);
 
     const order = { other: 0, then: 1, now: 2 };
-    const lines = gLines.selectAll('g').data(periodsInfo.slice().sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
+    const lines = gLines.selectAll('g').data(periodsInfo.filter(d => role(d.p) !== 'other')
+      .sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
       .join(enter => {
         const g = enter.append('g').attr('pointer-events', 'none');
         g.append('path').attr('class', 'ln').attr('fill', 'none').attr('stroke-linejoin', 'round');
@@ -793,26 +802,28 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // neighbourhood; click a neighbourhood and it is that one. It sits in the chart's top-left corner, which
   // the curves can never reach.
   function drawPlan(s, c) {
-    gPlan.selectAll('*').remove();
+    planSvg.selectAll('*').remove();
     const same = s.thenPeriod === s.period;
     const perM2 = Sp => c ? (charted(Sp.get(c)) ? Sp.get(c).edge / s.size : null) : d3.median(C.set, x => Sp.get(x).edge) / s.size;
     const m2 = Sp => { const v = perM2(Sp); return v ? Math.round(s.budget / v) : null; };
     const a = same ? null : m2(Sthen), z = m2(S);
     if (z == null) return;
-    const big = Math.max(a || 0, z), k = Math.min(6, 62 / Math.sqrt(big)), side = v => k * Math.sqrt(v);
-    const x0 = cm.l + 8, base = cm.t + 90;
-    gPlan.append('text').attr('x', x0).attr('y', cm.t + 10).attr('fill', theme.ink).style('font', `700 11.5px ${theme.font}`)
-      .text(`The home ${aed(s.budget)} buys${c ? ` in ${shortName(nameOf(c))}` : ', typical area'}`);
-    if (a != null) gPlan.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
+    // One fixed scale up to about 200 m², so sizes compare across budgets; bigger homes shrink the scale,
+    // and then a dotted typical-home outline appears so the change of scale is visible.
+    const K = 4.4, big = Math.max(a || 0, z), k = Math.min(K, (PLAN_H - 2) / Math.sqrt(big)), side = v => k * Math.sqrt(v);
+    const x0 = 1, base = PLAN_H - 1;
+    if (a != null) planSvg.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
       .attr('fill', '#f1f4f8').attr('stroke', '#8493a5').attr('stroke-width', 1.2).attr('stroke-dasharray', '3 2');
-    gPlan.append('rect').attr('x', x0).attr('y', base - side(z)).attr('width', side(z)).attr('height', side(z))
+    planSvg.append('rect').attr('x', x0).attr('y', base - side(z)).attr('width', side(z)).attr('height', side(z))
       .attr('fill', theme.depth.deep).attr('fill-opacity', 0.88);
-    const lx = x0 + side(big) + 8;
-    const yA = base - side(a || 0) + 10, yZ = Math.max(base - side(z) + 10, a != null ? yA + 15 : 0);
-    if (a != null) gPlan.append('text').attr('x', lx).attr('y', yA).attr('fill', '#5f6f80').style('font', `600 11.5px ${theme.font}`)
-      .text(`${a} m² in ${periodLabel(s.thenPeriod)}`);
-    gPlan.append('text').attr('x', lx).attr('y', yZ).attr('fill', theme.depth.deep).style('font', `800 12.5px ${theme.font}`)
-      .text(`${z} m²${same ? ` in ${periodLabel(s.period)}` : ' now'}`);
+    if (k < K) planSvg.append('rect').attr('x', x0).attr('y', base - side(s.size)).attr('width', side(s.size)).attr('height', side(s.size))
+      .attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1.2).attr('stroke-dasharray', '1 2');
+    const lx = x0 + side(big) + 9, where = c ? `in ${shortName(nameOf(c))}` : 'in a typical area';
+    const line = (y, t, font, fill) => planSvg.append('text').attr('x', lx).attr('y', y).attr('fill', fill).style('font', `${font} ${theme.font}`).text(t);
+    line(11, 'The home it buys', '700 11px', theme.ink);
+    if (a != null) line(29, `${a} m² in ${periodLabel(s.thenPeriod)}`, '600 11px', '#5f6f80');
+    line(a != null ? 46 : 32, `${z} m²${same ? ` in ${periodLabel(s.period)}` : ' now'}`, '800 13px', theme.depth.deep);
+    line(62, where.length > 24 ? where.slice(0, 23) + '…' : where, '500 11px', theme.quiet);
   }
 
   // Two points on the curves that say something; nothing else on the lines reacts.
@@ -830,40 +841,58 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         if (!best || a - z > best.a - best.z) best = { b, a, z };
       }
       if (best && best.a - best.z >= 3) hots.push({ x: cx(best.b), y: cy((best.a + best.z) / 2), act: () => ev.emit('budget', ceilBudget(best.b)),
-        lines: [`The biggest loss is at ${aed(ceilBudget(best.b))}`,
-          `${best.a} neighbourhoods in ${periodLabel(s.thenPeriod)}, ${best.z} in ${periodLabel(s.period)}:`,
-          `${best.a - best.z} slipped out of reach. Click to go there.`] });
+        label: `Biggest drop: ${best.a} → ${best.z}`,
+        title: `At ${aed(ceilBudget(best.b))}: ${best.a} neighbourhoods in ${periodLabel(s.thenPeriod)}, ${best.z} in ${periodLabel(s.period)}. Click to set your budget here.` });
       const c0 = d3.least(C.set, c => S.get(c).edge), e0 = S.get(c0).edge, eThen = Sthen.get(c0).edge;
       const nCheaper = C.set.filter(c => S.get(c).edge < Sthen.get(c).edge).length;
       if (e0 < eThen && e0 >= BUDGET_MIN && e0 <= BUDGET_MAX) hots.push({ x: cx(e0), y: cy(1), c: c0, act: () => ev.emit('select', c0),
-        lines: [`${nCheaper === 1 ? 'The only one that got cheaper' : `One of ${nCheaper} that got cheaper`}: ${shortName(nameOf(c0))}`,
-          `Typical ${s.size} m²: ${aed(eThen)} in ${periodLabel(s.thenPeriod)}, ${aed(e0)} now.`,
-          `Also the cheapest now. Click to find it on the map.`] });
+        label: `${nCheaper === 1 ? 'Only one got cheaper' : `${nCheaper} got cheaper, like`}: ${shortName(nameOf(c0))}`,
+        title: `Typical ${s.size} m²: ${aed(eThen)} in ${periodLabel(s.thenPeriod)}, ${aed(e0)} now. Click to find it on the map.` });
     }
-    const g = gHot.selectAll('g').data(hots).join(enter => {
+    const g = gHot.selectAll('g').data(hots, d => d.label.slice(0, 8)).join(enter => {
       const h = enter.append('g').style('cursor', 'pointer');
+      h.append('title');
       h.append('circle').attr('class', 'halo').attr('r', 11).attr('fill', '#ffffff').attr('fill-opacity', 0.001);
       h.append('circle').attr('r', 6.5).attr('fill', '#ffffff').attr('stroke', theme.ink).attr('stroke-width', 1.6);
       h.append('circle').attr('r', 2.2).attr('fill', theme.ink);
+      h.append('text').attr('class', 'hot-lab').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 4)
+        .attr('stroke-linejoin', 'round').attr('fill', theme.ink).style('font', `600 11px ${theme.font}`);
       return h;
     }).attr('transform', d => `translate(${d.x},${d.y})`);
-    g.on('mouseenter', (event, d) => {
-      if (d.c) ev.emit('hover', d.c);
-      hotNote.selectAll('*').remove();
-      const right = d.x < CW * 0.55, up = d.y > cm.t + 70;
-      const tx = right ? d.x + 14 : d.x - 14, ty = up ? d.y - 14 - (d.lines.length - 1) * 14 : d.y + 22;
-      d.lines.forEach((t, i) => hotNote.append('text').attr('x', tx).attr('y', ty + i * 14)
-        .attr('text-anchor', right ? 'start' : 'end').attr('fill', theme.ink).attr('paint-order', 'stroke')
-        .attr('stroke', '#ffffff').attr('stroke-width', 4).attr('stroke-linejoin', 'round')
-        .style('font', `${i ? 500 : 700} 11.5px ${theme.font}`).text(t));
-      hotNote.attr('opacity', 1);
-      gDots.attr('opacity', 0.15); gEq.attr('opacity', 0.15);     // the note has the floor
-    })
-      .on('mouseleave', (event, d) => {
-        hotNote.attr('opacity', 0); gDots.attr('opacity', 1); gEq.attr('opacity', cur && cur.selected ? 0 : 1);
-        if (d.c && cur && cur.hovered) ev.emit('hover', null);
-      })
-      .on('click', (event, d) => { event.stopPropagation(); hotNote.attr('opacity', 0); d.act(); });
+    g.select('title').text(d => d.title);
+    g.select('.hot-lab').text(d => d.label);
+    g.on('mouseenter', (event, d) => { if (d.c) ev.emit('hover', d.c); })
+      .on('mouseleave', (event, d) => { if (d.c && cur && cur.hovered) ev.emit('hover', null); })
+      .on('click', (event, d) => { event.stopPropagation(); d.act(); });
+  }
+
+  // Labels never sit on top of each other. The arrow, the clicked neighbourhood and the budget-line
+  // numbers come first; each ring label tries a few spots around its ring and is hidden only if none is
+  // free (the ring stays). Runs again once the budget-line numbers finish moving.
+  const SPOTS = { drop: [['end', -12, 4], ['end', -12, 18], ['start', 12, 18], ['start', 12, 4], ['end', -12, -10], ['start', 12, -10]],
+    cheap: [['start', 12, -10], ['start', 12, 4], ['start', 12, -24], ['start', 12, -38], ['end', -12, -10]] };
+  let declutterTimer = null;
+  function declutter() {
+    const boxes = [];
+    const add = sel => sel.each(function () { const b = this.getBBox(); if (b.width) boxes.push({ x: b.x - 2, y: b.y - 1, width: b.width + 4, height: b.height + 2 }); });
+    add(gEq.selectAll('text')); add(gTrace.selectAll('text')); add(gDots.selectAll('text'));
+    gHot.selectAll('g').each(function (d) {
+      const t = d3.select(this).select('.hot-lab'), node = t.node();
+      if (!node) return;
+      let placed = false;
+      for (const [anchor, dx, dy] of SPOTS[d.c ? 'cheap' : 'drop']) {
+        t.attr('text-anchor', anchor).attr('x', dx).attr('y', dy);
+        const b = node.getBBox(), r = { x: b.x + d.x, y: b.y + d.y, width: b.width, height: b.height };
+        const inside = r.x >= 0 && r.x + r.width <= CW && r.y >= 0 && r.y + r.height <= plotB + 1;   // never on the axis numbers
+        const hit = boxes.some(o => r.x < o.x + o.width && o.x < r.x + r.width && r.y < o.y + o.height && o.y < r.y + r.height);
+        if (inside && !hit) { boxes.push(r); placed = true; break; }
+      }
+      t.attr('opacity', placed ? 1 : 0);
+    });
+  }
+  function declutterSoon(wait) {
+    declutter();
+    if (wait) { clearTimeout(declutterTimer); declutterTimer = setTimeout(declutter, wait); }
   }
 
   function drawNotches(s) {
@@ -905,6 +934,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const leftSide = x > cm.l + 96;
     const ys = dots.map(d => Math.min(cy(d.v), plotB - 9));      // keep the labels clear of the budget axis
     if (ys.length === 2 && Math.abs(ys[0] - ys[1]) < 15) { const mid = (ys[0] + ys[1]) / 2, up = ys[1] <= ys[0] ? 1 : 0; ys[up] = mid - 8; ys[1 - up] = mid + 8; }
+    const sink = Math.max(...ys, 0) - (plotB - 9);                  // pulled apart near zero: lift both off the axis numbers
+    if (sink > 0) ys.forEach((v, i) => { ys[i] = v - sink; });
     gDots.selectAll('g').data(dots, d => d.k).join(enter => {
       const g = enter.append('g');
       g.append('circle').attr('r', 5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
@@ -936,15 +967,16 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
             .attr('text-anchor', more ? (fitsRight ? 'start' : 'end') : 'end')
             .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
             .style('font', `700 ${theme.size.small}px ${theme.font}`)
-            .text(more ? `${aed(eq - b)} more to open the same ${k}` : `${aed(b - eq)} less opens the same ${k}`);
+            .text(more ? `+${short$(eq - b)} AED for the same ${k}` : `${short$(b - eq)} AED less for the same ${k}`);
         }
       }
     }
+    declutterSoon(t ? 480 : 0);
   }
 
-  // The trace: one neighbourhood followed through the four periods. With nothing clicked it is the
-  // middle neighbourhood of each period (the typical price); click a neighbourhood and it becomes that
-  // one. Its dots sit on the period curves, joined in time order; the chips above show its prices.
+  // The clicked neighbourhood on the chart: its typical price then (hollow) and now (filled) as two marks
+  // on the budget axis, so you see it move past your budget line. The chips above show its price in every
+  // period (with nothing clicked, the typical price of the middle neighbourhood).
   function drawTrace(s) {
     if (!s || !C || !periodsInfo.length) return;
     const c = s.selected && byComm.has(s.selected) && charted(S.get(s.selected)) ? s.selected : null;
@@ -954,23 +986,30 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       else e = d.edges[Math.ceil(d.edges.length / 2) - 1];
       return { p: d.p, e, k: C.set.includes(c) || !c ? d3.bisectRight(d.edges, e) : null };
     });
-    const onChart = pts.filter(q => q.e != null && q.k != null && q.e >= BUDGET_MIN && q.e <= BUDGET_MAX);
-    gLines.selectAll('.ln').attr('stroke-opacity', c ? 0.55 : 1);
-    band.attr('fill-opacity', c ? 0.07 : 0.14);
-    gEq.attr('opacity', c ? 0 : 1).attr('pointer-events', c ? 'none' : null);   // the trace has the floor
     gTrace.selectAll('*').remove();
-    if (!c) { onChart.length = 0; }           // nothing clicked: no trace on the chart, the chips carry the typical price
-    gTrace.append('path').attr('d', d3.line()(onChart.map(q => [cx(q.e), cy(q.k)]))).attr('fill', 'none')
-      .attr('stroke', c ? theme.ink : theme.quiet).attr('stroke-width', c ? 2.4 : 1.2).attr('stroke-dasharray', c ? null : '2 3')
-      .attr('stroke-linejoin', 'round');
-    onChart.forEach(q => gTrace.append('circle').attr('cx', cx(q.e)).attr('cy', cy(q.k)).attr('r', c ? 5.5 : 3.5)
-      .attr('fill', pcol(q.p)).attr('stroke', c ? theme.ink : '#ffffff').attr('stroke-width', c ? 1.8 : 1.2));
-    if (c && onChart.length) {
-      const lastP = onChart[onChart.length - 1], lx2 = cx(lastP.e), right = lx2 + 10 + textW(shortName(nameOf(c)), 11.5, 700) < CW - 2;
-      gTrace.append('text').attr('x', right ? lx2 + 10 : lx2 - 10).attr('y', cy(lastP.k) + 4).attr('text-anchor', right ? 'start' : 'end')
-        .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-        .style('font', `700 11.5px ${theme.font}`).text(shortName(nameOf(c)));
+    if (c) {
+      const same = s.thenPeriod === s.period;
+      const edgeIn = p => { const d = periodsInfo.find(x => x.p === p), st = d && d.Sp.get(c); return charted(st) ? st.edge : null; };
+      const eThen = same ? null : edgeIn(s.thenPeriod), eNow = edgeIn(s.period), yR = plotB - 8;
+      if (eThen != null && eNow != null && Math.abs(cx(eNow) - cx(eThen)) > 14) {
+        const dir = eNow > eThen ? 1 : -1;
+        gTrace.append('line').attr('x1', cx(eThen) + dir * 6).attr('x2', cx(eNow) - dir * 8).attr('y1', yR).attr('y2', yR)
+          .attr('stroke', theme.ink).attr('stroke-width', 1.4).attr('marker-end', 'url(#vb-arrow)');
+      }
+      if (eThen != null) gTrace.append('circle').attr('cx', cx(eThen)).attr('cy', yR).attr('r', 4.5)
+        .attr('fill', '#ffffff').attr('stroke', '#8493a5').attr('stroke-width', 1.8);
+      if (eNow != null) gTrace.append('circle').attr('cx', cx(eNow)).attr('cy', yR).attr('r', 5)
+        .attr('fill', theme.depth.deep).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+      const anchorE = eNow ?? eThen;
+      if (anchorE != null) {
+        const txt = `${shortName(nameOf(c))}: ${eThen != null ? `${short$(eThen)} → ` : ''}${eNow != null ? short$(eNow) : 'few sales now'}`;
+        const w = textW(txt, 11.5, 700), xa = cx(anchorE), left = Math.min(Math.max(xa - w / 2, cm.l), CW - cm.r - w);
+        gTrace.append('text').attr('x', left).attr('y', yR - 11).attr('fill', theme.ink).attr('paint-order', 'stroke')
+          .attr('stroke', '#ffffff').attr('stroke-width', 4).attr('stroke-linejoin', 'round')
+          .style('font', `700 11.5px ${theme.font}`).text(txt);
+      }
     }
+    declutterSoon(0);
 
     drawPlan(s, c);
 
@@ -993,7 +1032,12 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       .style('color', d => d.p === s.period ? '#ffffff' : theme.ink)
       .style('box-shadow', d => d.p === s.period ? '0 1px 4px rgba(15,30,50,0.18)' : 'none')
       .on('click', (event, d) => { endPreview(); if (d.p !== cur.period) ev.emit('period', d.p); })
-      .on('mouseenter', (event, d) => { const pi = periodsInfo.find(x => x.p === d.p); if (pi && d.p !== cur.period) preview(pi.Sp); })
+      .on('mouseenter', (event, d) => {
+        const pi = periodsInfo.find(x => x.p === d.p);
+        if (!pi || d.p === cur.period) return;
+        preview(pi.Sp);
+        curvePreview.attr('d', step(pi.pts)).attr('stroke', pcol(pi.p)).attr('opacity', 1);
+      })
       .on('mouseleave', endPreview)
       .each(function (d) {
         const el = d3.select(this), on = d.p === s.period;
