@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rising Tide · Do sales happen where people live?</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  body { margin: 0; font-family: 'Libre Franklin', sans-serif; color: #161616; background: #fff; }
+  .wrap { max-width: 1260px; margin: 0 auto; padding: 34px 28px 50px; }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #d1495b; }
+  h1 { font-family: 'Source Serif 4', serif; font-size: 38px; line-height: 1.12; margin: 8px 0 8px; max-width: 900px; }
+  .sub { font-size: 15px; color: #666; margin: 0 0 20px; max-width: 860px; line-height: 1.5; }
+  .controls { display: flex; gap: 26px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+  .seg { display: flex; gap: 6px; align-items: center; font-size: 13px; color: #777; }
+  .seg button { font: 600 12.5px 'Libre Franklin'; border: 1px solid #ddd; background: #fff; border-radius: 99px; padding: 7px 13px; cursor: pointer; color: #555; transition: all .25s; }
+  .seg button.on { background: #161616; color: #fff; border-color: #161616; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 6px; }
+  .kpi { border-top: 3px solid var(--c); padding: 10px 2px 0; transition: border-color .6s; }
+  .kpi b { display: block; font: 800 40px/1 'Libre Franklin'; color: var(--c); transition: color .6s; }
+  .kpi span { font-size: 13.5px; color: #555; }
+  .main { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+  svg { width: 100%; height: auto; display: block; }
+  text { font-family: 'Libre Franklin', sans-serif; }
+  .ribbon, .seg-bar, .comm { cursor: pointer; }
+  aside { border-left: 1px solid #eee; padding-left: 20px; }
+  aside h3 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #999; margin: 4px 0 6px; }
+  #detail { font-size: 13.5px; color: #555; line-height: 1.5; min-height: 230px; }
+  #detail h2 { font-family: 'Source Serif 4', serif; font-size: 24px; color: #161616; margin: 2px 0 6px; }
+  #detail .big { font: 700 15px 'Libre Franklin'; color: var(--c); }
+  .note { font-size: 12px; color: #888; line-height: 1.6; margin-top: 24px; border-top: 1px solid #eee; padding-top: 10px; }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } aside { border: 0; padding: 0; } .kpis { grid-template-columns: 1fr; } h1 { font-size: 28px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Rising Tide</div>
+  <h1>Dubai's flats are selling where people, and the metro, aren't yet</h1>
+  <p class="sub">Each ribbon is a community: its share of residents on the left, its share of flat sales on the right. Click a group on the right to see when its new residents arrive.</p>
+  <div class="controls">
+    <div class="seg" id="split">Split communities by</div>
+    <div class="seg" id="periods">Period</div>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="main">
+    <svg id="flow" viewBox="0 0 880 640"></svg>
+    <aside>
+      <h3>Where they are</h3>
+      <svg id="map" viewBox="0 0 340 290"></svg>
+      <div id="detail"></div>
+    </aside>
+  </div>
+  <p class="note"><b>Data.</b> Dubai Land Department transactions, 10% random sample (course file): sales of units with sub-type Flat, 1 Jan 2015 – 31 Aug 2026 (older records are sparse and partly implausible; September 2026 is incomplete), dates read as UTC. Shares, not counts, because the file is a sample. Residents: Dubai Municipality communities file, population 2019, joined on the community number, so districts built since 2019 look emptier than they are, which is exactly where new residents are heading. Metro: the 56 stations in the course repo (Red and Green lines and the Expo branch, as of about 2020); distance is a straight line from the community's centre to the nearest station, so large communities may have a station nearer their edge. "The busiest" = the fewest communities that together make half of all flat sales in the period. Ready or off-plan: ready flats (registered as existing) can be lived in from the sale; off-plan flats were sold before completion, so people move in after handover; the file has no completion dates, and some buyers are investors who will rent the flat out. Flat size: from the bedrooms recorded on each sale (rooms_en); used as a sign of household type, not a record of who the buyers are (studio or 1-bed, 2-bed, 3-bed or more); "% = 2-bed+" is the share of flats with two or more bedrooms; sales with no bedroom count are left out of that bar.</p>
+</div>
+
+<script>
+// =====================================================================
+// 1. LOAD AND CLEAN THE DATA
+// =====================================================================
+const BASE = 'https://raw.githubusercontent.com/sharios/CS333/main/2026-27/';
+const START = Date.UTC(2015, 0, 1), END = Date.UTC(2026, 8, 1);            // 1 Jan 2015 – 31 Aug 2026
+const PERIODS = { '2015–17': [2015, 2017], '2018–20': [2018, 2020], '2021–23': [2021, 2023], '2024–26': [2024, 2026] };
+const NICK = { 681: 'JVC', 346: 'Business Bay', 392: 'Dubai Marina', 345: 'Downtown', 631: 'Dubai Hills', 415: 'Creek Harbour',
+               393: 'JLT', 621: 'International City', 521: 'Dubai South', 626: 'Silicon Oasis', 321: 'Maritime City' };
+const pct = v => (v * 100).toFixed(1) + '%', pct0 = v => Math.round(v * 100) + '%';
+const SIZE_KEY = [['#d4dde8', 'studio/1-bed'], ['#8eaacb', '2-bed'], ['#2f5d8a', '3-bed+']];   // bedrooms: studio/1-bed, 2-bed, 3-bed+
+
+Promise.all([d3.csv(BASE + 'Part%202/transactions.csv'), d3.json(BASE + 'Part%202/dubai.geojson'),
+             d3.json(BASE + 'Part%203/dubai_metro_stations.geojson')]).then(([tx, geo, metro]) => {
+  const parse = d3.utcParse('%Y-%m-%d');
+  const sales = tx.filter(r => {                                            // flat sales inside the time window
+    const d = parse(r.instance_date);
+    r.year = d && d.getUTCFullYear();
+    return d && d >= START && d < END && r.trans_group_en === 'Sales' && r.property_type_en === 'Unit' && r.property_sub_type_en === 'Flat';
+  });
+  const byComm = d3.group(sales, r => +r.comm_num);
+  const stations = metro.features.map(f => f.geometry.coordinates);
+  const kmToMetro = (lon, lat) => d3.min(stations, s => d3.geoDistance([lon, lat], s)) * 6371;   // great-circle distance
+  // one row per community: name, residents, distance to the metro, and its flat sales (year, off-plan or not)
+  const comms = geo.features.map(f => {
+    const p = f.properties, id = +p.COMM_NUM;
+    const name = p.CNAME_E.toLowerCase().replace(/(^|[\s.])\w/g, c => c.toUpperCase()).replace(/\s*\(.*/, '').trim();
+    return { id, label: NICK[id] || name, pop: p['Population 2019'], lon: +p.Longitude, lat: +p.Latitude, feature: f,
+             km: kmToMetro(+p.Longitude, +p.Latitude), deals: (byComm.get(id) || []).map(r => ({ y: r.year, off: r.reg_type_en === 'Off-Plan Properties',
+               size: !r.rooms_en ? null : ['Studio', 'Single Room', '1 B/R'].includes(r.rooms_en) ? 0 : r.rooms_en === '2 B/R' ? 1 : 2 })) };
+  });
+  start(comms, stations);
+});
+
+function start(comms, stations) {
+  const state = { period: '2024–26', split: 'sales', drill: null, pinned: null };
+  const POP = d3.sum(comms, c => c.pop), YEARS = d3.range(2015, 2026);
+  comms.forEach(c => { c.yearly = YEARS.map(y => c.deals.filter(r => r.y === y).length);
+                       c.yearlyOff = YEARS.map(y => c.deals.filter(r => r.y === y && r.off).length); });
+
+  // =====================================================================
+  // 2. TWO WAYS TO SPLIT THE CITY (the planner's two questions)
+  // =====================================================================
+  const SPLITS = {
+    sales: { button: 'How much they sell', names: m => [`The busiest ${m.busiest}`, 'Some flat sales', 'No flat sold'],
+      colours: ['#d1495b', '#dcb46b', '#4f86b5'], group: (c, m) => m.top.has(c.id) ? 0 : c.sold ? 1 : 2,
+      kpis: m => [[m.busiest, '', 'communities made half of all flat sales', 0], [m.g[0].people * 100, '%', 'of Dubai\'s residents live in them', 0],
+                  [m.g[2].people * 100, '%', 'of residents live in communities where not one flat sold', 2]], },
+    metro: { button: 'Distance to the metro', names: () => ['Within 1 km of metro', '1–3 km from metro', 'Over 3 km from metro'],
+      colours: ['#178f86', '#9fd0c7', '#e0793a'], group: c => c.km <= 1 ? 0 : c.km <= 3 ? 1 : 2,
+      kpis: m => [[m.g[0].people * 100, '%', 'of residents live in communities within 1 km of a metro station', 0], [m.g[0].sales * 100, '%', 'of flat sales were there', 0],
+                  [m.g[2].sales * 100, '%', 'of flat sales were in communities more than 3 km from a station', 2]], }
+  };
+
+  const familyShare = n => d3.sum(n) ? (n[1] + n[2]) / d3.sum(n) : null;   // share of flats with 2+ bedrooms
+  function measure() {
+    const inP = p => r => r.y >= PERIODS[p][0] && r.y <= PERIODS[p][1];
+    comms.forEach(c => { const d = c.deals.filter(inP(state.period)); c.sold = d.length; c.off = d.filter(r => r.off).length;
+      c.sizes = [0, 1, 2].map(k => d.filter(r => r.size === k).length); c.family = familyShare(c.sizes); });
+    const total = d3.sum(comms, c => c.sold), top = new Set(); let cum = 0;
+    for (const c of d3.sort(comms.filter(c => c.sold), c => -c.sold)) { if (cum >= total / 2) break; top.add(c.id); cum += c.sold; }
+    const m = { total, top, busiest: top.size };
+    comms.forEach(c => { c.ss = c.sold / total; c.ps = c.pop / POP; c.group = SPLITS[state.split].group(c, m); });
+    m.g = [0, 1, 2].map(k => { const cs = comms.filter(c => c.group === k); return { people: d3.sum(cs, c => c.ps), sales: d3.sum(cs, c => c.ss) }; });
+    m.family = familyShare([0, 1, 2].map(k => d3.sum(comms, c => c.sizes[k])));
+    return m;
+  }
+
+  // =====================================================================
+  // 3. THE RIBBONS: residents (left) flow into flat sales (right)
+  // =====================================================================
+  const svg = d3.select('#flow'), X0 = 165, X1 = 560, BW = 12, TOP = 64, SPAN = 525, GAP = 18;
+  const flowComms = comms.filter(c => c.pop > 0 || c.deals.length);
+  const ribbonPath = (c, grow = 1) => { const xa = X0 + BW, xb = xa + (X1 - xa) * grow, xm = (xa + xb) / 2;   // a smooth S-shaped band
+    return `M${xa},${c.a0}C${xm},${c.a0} ${xm},${c.b0} ${xb},${c.b0}L${xb},${c.b1}C${xm},${c.b1} ${xm},${c.a1} ${xa},${c.a1}Z`; };
+  const gFlow = svg.append('g'), gDrill = svg.append('g');                 // the ribbon view, and the "when do they arrive" view
+  const head = gFlow.append('g'), gRib = gFlow.append('g'), gBars = gFlow.append('g'), gNames = gFlow.append('g').style('pointer-events', 'none'), gNotes = gFlow.append('g');
+  const ribbons = gRib.selectAll('path').data(flowComms, c => c.id).join('path').attr('class', 'ribbon').attr('stroke', '#fff').attr('stroke-width', .4);
+  const left = gBars.selectAll('rect.l').data(flowComms, c => c.id).join('rect').attr('class', 'seg-bar l').attr('x', X0).attr('width', BW);
+  const right = gBars.selectAll('rect.r').data(flowComms, c => c.id).join('rect').attr('class', 'seg-bar r').attr('x', X1).attr('width', BW);
+  const hLeft = head.append('text').attr('x', X0).attr('y', TOP - 20).attr('font-size', 11).attr('font-weight', 700).attr('letter-spacing', '.1em').attr('fill', '#777');
+  const hRight = head.append('text').attr('x', X1 + BW).attr('y', TOP - 20).attr('text-anchor', 'end').attr('font-size', 11).attr('font-weight', 700).attr('letter-spacing', '.1em').attr('fill', '#777');
+  let first = true, lastM = null;
+
+  function draw() {
+    const m = measure(), S = SPLITS[state.split], col = k => S.colours[k], names = S.names(m);
+    let a = TOP, b = TOP, g = 0;                                             // stack: group by group, biggest sellers first
+    d3.sort(flowComms, c => c.group, c => -c.sold, c => -c.pop).forEach(c => { if (c.group !== g) { a += GAP * (c.group - g); b += GAP * (c.group - g); g = c.group; }
+      [c.a0, c.a1, c.b0, c.b1] = [a, a += c.ps * SPAN, b, b += c.ss * SPAN]; });
+    const t = svg.transition().duration(first ? 1600 : 900).ease(d3.easeCubicInOut);
+    if (first) ribbons.attr('d', c => ribbonPath(c, 0)).attr('fill-opacity', .55);   // on load the ribbons grow out of the residents bar
+    ribbons.transition(t).delay(first ? c => c.a0 / 3 : 0).attr('d', c => ribbonPath(c)).attr('fill', c => col(c.group));
+    left.transition(t).attr('y', c => c.a0).attr('height', c => c.a1 - c.a0).attr('fill', c => d3.color(col(c.group)).darker(.6));
+    right.transition(t).delay(first ? 900 : 0).attr('y', c => c.b0).attr('height', c => c.b1 - c.b0).attr('fill', c => d3.color(col(c.group)).darker(.6));
+    hLeft.text('WHERE PEOPLE LIVE · 2019'); hRight.text(`WHERE FLATS SOLD · ${state.period}`);
+    // the three groups, explained in place on the right; nudged apart so they never overlap
+    const notes = [0, 1, 2].map(k => { const cs = flowComms.filter(c => c.group === k);
+      return { k, y: cs.length ? (m.g[k].sales ? (d3.min(cs, c => c.b0) + d3.max(cs, c => c.b1)) / 2 : d3.max(cs, c => c.b1) + 10) : 600 }; });
+    notes.forEach((n, i) => { if (i) n.y = Math.max(n.y, notes[i - 1].y + 84); }); notes.forEach(n => n.y = Math.min(n.y, 580 - (2 - n.k) * 84));
+    gNotes.selectAll('g').data(notes, n => n.k).join(enter => { const e = enter.append('g').style('cursor', 'pointer');
+        e.append('rect').attr('x', -8).attr('y', -18).attr('width', 168).attr('height', 84).attr('fill', 'transparent');   // click target
+        e.append('text').attr('class', 'n1').attr('font-size', 13).attr('font-weight', 700); e.append('text').attr('class', 'n2').attr('y', 17).attr('font-size', 12).attr('fill', '#777');
+        e.append('text').attr('class', 'n3').attr('y', 38).attr('font-size', 19).attr('font-weight', 800);
+        e.append('text').attr('class', 'n4').attr('y', 58).attr('font-size', 11.5).attr('font-weight', 700).attr('text-decoration', 'underline'); return e; })
+      .on('mouseenter', (e, n) => focus({ group: n.k })).on('mouseleave', () => focus(state.pinned ? { comm: state.pinned } : null)).on('click', (e, n) => { state.drill = n.k; drawDrill(); })
+      .call(s => { s.select('.n1').text(n => names[n.k]); s.select('.n2').text(n => `${pct0(m.g[n.k].people)} of residents`);
+                   s.select('.n3').attr('fill', n => d3.color(col(n.k)).darker(.4))
+                     .html(n => `→ ${pct0(m.g[n.k].sales)}<tspan font-size="12" font-weight="600"> of flat sales</tspan>`);
+                   s.select('.n4').attr('fill', n => d3.color(col(n.k)).darker(.6)).text(n => m.g[n.k].sales ? 'When do they arrive? ›' : 'Who lives here? ›'); })
+      .transition(t).attr('transform', n => `translate(718,${n.y - 14})`);
+    drawKpis(S.kpis(m), col); lastM = m;
+    paintMap(t, col); first = false; drawDrill();
+  }
+
+  // labels: the biggest sellers on the right, the biggest populations on the left, plus whatever is in focus
+  function drawNames(extra) {
+    const big = (key, side) => d3.sort(flowComms, c => -c[key]).slice(0, side === 'r' ? 5 : 3).filter(c => (side === 'r' ? c.b1 - c.b0 : c.a1 - c.a0) >= 9);
+    const items = [...big('ss', 'r').map(c => [c, 'r']), ...big('ps', 'l').map(c => [c, 'l'])];
+    if (extra && !items.some(d => d[0] === extra)) items.push([extra, extra.sold ? 'r' : 'l']);
+    gNames.selectAll('text').data(items, d => d[0].id + d[1]).join('text').attr('font-size', 11.5).attr('font-weight', d => d[0] === extra ? 800 : 600)
+      .attr('paint-order', 'stroke').attr('stroke', '#fff').attr('stroke-width', 3).attr('text-anchor', d => d[1] === 'r' ? 'start' : 'end')
+      .attr('x', d => d[1] === 'r' ? X1 + BW + 6 : X0 - 6).attr('y', d => (d[1] === 'r' ? (d[0].b0 + d[0].b1) / 2 : (d[0].a0 + d[0].a1) / 2) + 4).text(d => d[0].label);
+  }
+
+  // =====================================================================
+  // 4. THE LINKED MAP AND THE DETAIL CARD
+  // =====================================================================
+  const mapComms = comms.filter(c => c.lon < 55.6), ring = f => f.geometry.type === 'Polygon' ? f.geometry.coordinates.flat() : f.geometry.coordinates.flat(2);
+  const merc = d3.geoMercator().fitExtent([[6, 6], [334, 284]], { type: 'MultiPoint', coordinates: mapComms.flatMap(c => ring(c.feature)) });
+  const path = d3.geoPath(d3.geoTransform({ point(x, y) { const p = merc([x, y]); this.stream.point(p[0], p[1]); } }));
+  const map = d3.select('#map');
+  map.append('rect').attr('width', 340).attr('height', 290).attr('rx', 8).attr('fill', '#eef4f7');
+  const polys = map.append('g').selectAll('path').data(mapComms, c => c.id).join('path').attr('class', 'comm').attr('d', c => path(c.feature))
+    .attr('stroke', '#fff').attr('stroke-width', .4);
+  const kmPx = Math.abs(merc([55.27, 25.2])[1] - merc([55.27, 25.2 + 1 / 110.6])[1]);   // 1 km in map pixels
+  const rings = map.append('g').selectAll('circle').data(stations).join('circle').attr('cx', s => merc(s)[0]).attr('cy', s => merc(s)[1])
+    .attr('r', kmPx).attr('fill', 'none').attr('stroke', '#178f86').attr('stroke-width', .8);
+  map.append('g').selectAll('circle').data(stations).join('circle').attr('cx', s => merc(s)[0]).attr('cy', s => merc(s)[1]).attr('r', 1.6).attr('fill', '#222');
+  map.append('text').attr('x', 12).attr('y', 22).attr('font-size', 10.5).attr('fill', '#5b7f91').attr('font-style', 'italic').text('Arabian Gulf');
+  map.append('text').attr('x', 328).attr('y', 280).attr('text-anchor', 'end').attr('font-size', 9.5).attr('fill', '#777').text('● metro station');
+  map.append('text').attr('x', 12).attr('y', 280).attr('font-size', 9.5).attr('fill', '#999').text('grey: under 1,000 residents and no sales');
+
+  function paintMap(t, col) {
+    polys.transition().duration(t.duration()).attr('fill', c => c.pop >= 1000 || c.sold ? col(c.group) : '#e6e6e3');   // grey: almost nobody lives there and nothing sold
+    rings.transition().duration(t.duration()).attr('opacity', state.split === 'metro' ? .5 : 0);
+  }
+
+  function focus(f) {                                                       // highlight one community or one group everywhere
+    if (!f && state.drill != null) f = { group: state.drill };
+    const c = f && f.comm, k = f && f.group, on = d => c ? d === c : k != null ? d.group === k : true;
+    ribbons.attr('fill-opacity', d => !f ? .55 : on(d) ? .9 : .08);
+    gBars.selectAll('rect').attr('opacity', d => !f || on(d) ? 1 : .25);
+    polys.attr('opacity', d => !f || on(d) ? 1 : .25).attr('stroke', d => c && d === c ? '#161616' : '#fff').attr('stroke-width', d => c && d === c ? 1.6 : .4);
+    if (c) polys.filter(d => d === c).raise();
+    drawNames(c); drawDetail(c);
+  }
+
+  function drawDetail(c) {
+    const box = d3.select('#detail'), S = SPLITS[state.split];
+    if (!c) { box.html(`<h2>Pick a community</h2><p>Hover or click any ribbon, row or place on the map.</p>`); return; }
+    const ratio = c.ps ? c.ss / c.ps : null;
+    box.style('--c', S.colours[c.group]).html(`<h2>${c.label}</h2>
+      <div>${d3.format(',')(c.pop)} residents in 2019 · <b>${pct(c.ps)}</b> of Dubai's</div>
+      <div><b>${pct(c.ss)}</b> of Dubai's flat sales in ${state.period}${c.sold ? ` · ${pct0(c.off / c.sold)} off-plan` : ''}</div>
+      <p class="big">${!c.sold ? 'No flat sold here in this period.' : ratio == null || c.pop < 300 ? 'Almost nobody lived here in 2019: a new district.' : `Its share of flat sales is ${ratio.toFixed(ratio < 1 ? 2 : 1)}× its share of residents.`}</p>
+      ${c.sold ? `<div><b>Ready or off-plan:</b> ${pct0(c.off / c.sold)} off-plan, so ${c.off / c.sold >= .5 ? 'most new residents arrive after handover' : 'most new residents are moving in now'}</div>` : ''}
+      ${c.sold && c.family != null ? `<div><b>Flat size:</b> ${pct0(1 - c.family)} studios or 1-beds, ${pct0(c.family)} 2-bed+ · ${c.family >= lastM.family + .05 ? 'suits more families than average' : c.family <= lastM.family - .1 ? 'suits mostly singles and couples' : 'a typical mix'}</div>` : ''}
+      <div>${c.km.toFixed(1)} km from the nearest metro station</div><svg id="spark" viewBox="0 0 300 58"></svg>`);
+    const x = d3.scaleBand(YEARS, [0, 300]).padding(.2), y = d3.scaleLinear([0, d3.max(c.yearly) || 1], [0, 34]), s = d3.select('#spark');
+    s.append('text').attr('y', 10).attr('font-size', 10).attr('fill', '#999').text('Flats sold each year (dark = ready, gold = off-plan)');
+    s.selectAll('rect.r').data(YEARS).join('rect').attr('x', v => x(v)).attr('width', x.bandwidth()).attr('y', (v, i) => 48 - y(c.yearly[i] - c.yearlyOff[i]))
+      .attr('height', (v, i) => y(c.yearly[i] - c.yearlyOff[i])).attr('fill', '#55697f');
+    s.selectAll('rect.o').data(YEARS).join('rect').attr('x', v => x(v)).attr('width', x.bandwidth()).attr('y', (v, i) => 48 - y(c.yearly[i]))
+      .attr('height', (v, i) => y(c.yearlyOff[i])).attr('fill', '#e5a43a');
+    s.selectAll('text.yr').data([2015, 2025]).join('text').attr('class', 'yr').attr('x', v => x(v) + x.bandwidth() / 2).attr('y', 58)
+      .attr('text-anchor', 'middle').attr('font-size', 9).attr('fill', '#999').text(v => v);
+  }
+
+  // =====================================================================
+  // 4b. INSIDE ONE GROUP: when do its new residents arrive, and what size of flats sold?
+  // ready flats = people can move in now; off-plan = sold before completion, people arrive after handover
+  // =====================================================================
+  function drawDrill() {
+    const k = state.drill, open = k != null, t = svg.transition().duration(800).ease(d3.easeCubicInOut);
+    gFlow.style('pointer-events', open ? 'none' : null).transition(t).attr('opacity', open ? 0 : 1);
+    if (!open) { gDrill.selectAll('*').transition(t).attr('opacity', 0).remove(); focus(state.pinned ? { comm: state.pinned } : null); return; }
+    const S = SPLITS[state.split], col = S.colours[k], members = flowComms.filter(c => c.group === k), sells = d3.sum(members, c => c.sold) > 0;
+    let rows = sells ? d3.sort(members.filter(c => c.sold), c => -c.sold) : d3.sort(members, c => -c.pop);
+    if (rows.length > 15) {                                                  // keep it readable: 14 biggest + everyone else in one row
+      const rest = rows.slice(14), sum = f => d3.sum(rest, f);
+      rows = [...rows.slice(0, 14), { id: 'rest', label: `${rest.length} others`, rest: true, sold: sum(c => c.sold), off: sum(c => c.off), ss: sum(c => c.ss), ps: sum(c => c.ps),
+        b0: 600, b1: 600, sizes: [0, 1, 2].map(i => sum(c => c.sizes[i])), family: familyShare([0, 1, 2].map(i => sum(c => c.sizes[i]))), yearly: YEARS.map((y, i) => sum(c => c.yearly[i])), yearlyOff: YEARS.map((y, i) => sum(c => c.yearlyOff[i])) }];
+    }
+    rows.sort((a, b) => (!!a.rest - !!b.rest) || d3.descending(sells ? a.ss : a.ps, sells ? b.ss : b.ps));   // biggest first, 'others' last
+    const share = sells ? d3.sum(members, c => c.off) / d3.sum(members, c => c.sold) : 0, names = S.names(lastM);
+    const x = d3.scaleLinear([0, d3.max(rows.filter(c => !c.rest), c => sells ? c.ss : c.ps)], [200, 430]), RH = 30, T0 = 108, W0 = 565, WW = 115;
+    gDrill.selectAll('.top').remove();
+    const top = gDrill.append('g').attr('class', 'top').attr('opacity', 0);
+    top.append('text').attr('y', 30).attr('font-size', 17).attr('font-weight', 800).attr('fill', d3.color(col).darker(.5)).text(names[k]);
+    top.append('text').attr('y', 52).attr('font-size', 13).attr('fill', '#555').text(sells
+      ? `${pct0(share)} of the flats sold here were sold off-plan, before completion: ${share >= .5 ? 'most new residents arrive after handover' : 'most new residents are moving in now'}.`
+      : `${pct0(lastM.g[k].people)} of Dubai's residents, and no flat sold in ${state.period}: no flats are selling here.`);
+    if (sells) {
+      [['FLATS SOLD · READY OR OFF-PLAN', 200], ['FLAT SIZE', W0]].forEach(([txt, x0]) =>
+        top.append('text').attr('x', x0).attr('y', 70).attr('font-size', 10.5).attr('font-weight', 700).attr('letter-spacing', '.08em').attr('fill', '#888').text(txt));
+      [['#55697f', 'ready: move in now', 200], ['#e5a43a', 'off-plan: move in after handover', 318], ...SIZE_KEY.map(([c, txt], i) => [c, txt, W0 + [0, 82, 130][i]])].forEach(([c, txt, x0]) => {
+        top.append('rect').attr('x', x0).attr('y', 77).attr('width', 10).attr('height', 10).attr('fill', c);
+        top.append('text').attr('x', x0 + 13).attr('y', 86).attr('font-size', 10.5).attr('fill', '#555').text(txt); });
+      top.append('text').attr('x', W0 + 188).attr('y', 86).attr('font-size', 10.5).attr('fill', '#888').text('% = 2-bed+');
+    }
+    const back = top.append('g').style('cursor', 'pointer').on('click', () => { state.drill = null; drawDrill(); });
+    back.append('rect').attr('x', 730).attr('y', 10).attr('width', 146).attr('height', 30).attr('fill', 'transparent');   // click target
+    back.append('text').attr('x', 870).attr('y', 30).attr('text-anchor', 'end').attr('font-size', 13).attr('font-weight', 700).text('← All communities');
+    top.transition(t).attr('opacity', 1);
+    const rowsSel = gDrill.selectAll('g.drow').data(rows, c => c.id).join(enter => { const g = enter.append('g').attr('class', 'drow').style('cursor', 'pointer')
+        .attr('opacity', 0).attr('transform', c => `translate(0,${(c.b0 + c.b1) / 2})`);            // each row starts where its ribbon ended
+      g.append('rect').attr('x', 0).attr('y', -RH / 2).attr('width', 880).attr('height', RH).attr('fill', 'transparent');   // hover target
+      g.append('text').attr('class', 'lb').attr('x', 190).attr('y', 4).attr('text-anchor', 'end').attr('font-size', 12).attr('font-weight', 600);
+      g.append('rect').attr('class', 'now').attr('y', -8).attr('height', 16).attr('x', 200);
+      g.append('rect').attr('class', 'later').attr('y', -8).attr('height', 16);
+      g.append('text').attr('class', 'vl').attr('y', 4).attr('font-size', 11.5).attr('font-weight', 700);
+      [0, 1, 2].forEach(k => g.append('rect').attr('class', 'z' + k).attr('y', -8).attr('height', 16).attr('fill', SIZE_KEY[k][0]));
+      g.append('text').attr('class', 'fm').attr('y', 4).attr('font-size', 10.5).attr('fill', '#555'); return g; }, update => update, exit => exit.transition(t).attr('opacity', 0).remove())
+      .on('mouseenter', (e, c) => { if (!c.rest) focus({ comm: c }); }).on('mouseleave', () => focus(state.pinned ? { comm: state.pinned } : null))
+      .on('click', (e, c) => { if (!c.rest) { state.pinned = state.pinned === c ? null : c; focus(state.pinned ? { comm: c } : null); } });
+    rowsSel.transition(t).attr('opacity', 1).attr('transform', (c, i) => `translate(0,${T0 + i * RH})`);
+    rowsSel.select('.lb').text(c => c.label.length > 24 ? c.label.slice(0, 23) + '…' : c.label).attr('font-style', c => c.rest ? 'italic' : null);
+    const end = c => c.rest ? x(0) : x(sells ? c.ss : c.ps), split = c => sells ? x(0) + (end(c) - x(0)) * (1 - c.off / c.sold) : end(c);   // the 'others' row: text only
+    rowsSel.select('.now').transition(t).attr('width', c => split(c) - x(0)).attr('fill', sells ? '#55697f' : d3.color(col).darker(.2));
+    rowsSel.select('.later').transition(t).attr('x', split).attr('width', c => end(c) - split(c)).attr('fill', '#e5a43a');
+    rowsSel.select('.vl').text(c => c.rest ? (sells ? `together ${pct(c.ss)} of flat sales, ${pct0(c.off / c.sold)} off-plan` : `together ${pct(c.ps)} of residents`) : sells ? `${pct0(c.off / c.sold)} off-plan` : `${pct(c.ps)} of residents`).attr('fill', sells ? '#9a6a10' : '#555')
+      .transition(t).attr('x', c => end(c) + 8);
+    // who: the mix of flat sizes sold (studio/1-bed, 2-bed, 3-bed+), as one 100% bar
+    const mix = c => { const n = d3.sum(c.sizes || []); return n ? c.sizes.map(v => v / n) : [0, 0, 0]; };
+    [0, 1, 2].forEach(k => rowsSel.select('.z' + k).transition(t).attr('x', c => W0 + WW * d3.sum(mix(c).slice(0, k))).attr('width', c => sells ? WW * mix(c)[k] : 0));
+    rowsSel.select('.fm').attr('x', W0 + WW + 6).text(c => sells && d3.sum(c.sizes || []) ? pct0(c.family) : '');
+    focus(state.pinned && rows.includes(state.pinned) ? { comm: state.pinned } : null);
+  }
+
+  // the three headline numbers count up or down to their new value
+  function drawKpis(kpis, col) {
+    d3.select('#kpis').selectAll('.kpi').data(kpis).join(e => { const d = e.append('div').attr('class', 'kpi'); d.append('b').property('_v', 0); d.append('span'); return d; })
+      .style('--c', d => d3.color(col(d[3])).darker(.4))
+      .call(s => s.select('span').text(d => d[2]))
+      .select('b').transition().duration(900).tween('text', function (d) {
+        const from = this._v || 0, to = d[0], f = d3.interpolateNumber(from, to); this._v = to;
+        return k => this.textContent = Math.round(f(k)) + d[1]; });
+  }
+
+  // =====================================================================
+  // 5. CONTROLS AND HOVER
+  // =====================================================================
+  const hover = sel => sel.on('mouseenter', (e, c) => focus({ comm: c })).on('mouseleave', () => focus(state.pinned ? { comm: state.pinned } : null))
+    .on('click', (e, c) => { state.pinned = state.pinned === c ? null : c; focus(state.pinned ? { comm: c } : null); });
+  [ribbons, left, right, polys].forEach(hover);
+  d3.select('#split').selectAll('button').data(Object.keys(SPLITS)).join('button').text(k => SPLITS[k].button)
+    .on('click', (e, k) => { state.split = k; state.drill = null; d3.selectAll('#split button').classed('on', d => d === k); draw(); });
+  d3.select('#periods').selectAll('button').data(Object.keys(PERIODS)).join('button').text(p => p)
+    .on('click', (e, p) => { state.period = p; d3.selectAll('#periods button').classed('on', d => d === p); draw(); });
+  d3.selectAll('#split button').classed('on', d => d === state.split); d3.selectAll('#periods button').classed('on', d => d === state.period);
+  draw();
+}
+</script>
+</body>
+</html>
