@@ -169,15 +169,15 @@ body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
 // them into the next view; "own" is each member's own page.
 const VIEWS = [
   { key: 'buyer', k: '#2a6fb0', role: 'Buyer', by: 'Adam', colour: '#5ea6e4',
-    what: 'A map where your budget is the sea level. Guess first, then drag the budget and watch neighbourhoods go under water.', q: 'Where can my budget still buy?', src: '../', own: '../', fixed: true },   // one screen: see fit()
+    what: 'What a budget can still buy across Dubai, and how that changed between 2015 and 2026.', q: 'Where can my budget still buy?', src: '../', own: '../', fixed: true },   // one screen: see fit()
   { key: 'developer', k: '#c0601f', role: 'Developer', by: 'Urwah', colour: '#ef8a4c',
-    what: 'A heatmap of 41 projects by year that re-sorts by peak year, with land-plot sales beside it.', q: 'Where is apartment buying concentrated, and where are land plots sold?',
+    what: 'Which projects led apartment sales each year, and where land plots are being sold.', q: 'Where is apartment buying concentrated, and where are land plots sold?',
     src: 'views/developer/', own: 'https://urwahsheikha.github.io/cs333-view-c/' },
   { key: 'planner', k: '#c23b4e', role: 'Planner', by: 'Nabeel', colour: '#e8656e',
-    what: 'Ribbons from where Dubai\'s residents live to where its flats sell, split by sales or by distance to the metro.', q: 'Do sales happen where people live?',
+    what: 'Whether flat sales happen where Dubai\'s residents live, and how close they are to the metro.', q: 'Do sales happen where people live?',
     src: 'views/planner/', own: 'https://babar-nabeel.github.io/Data-Viz-Project/' },
   { key: 'investor', k: '#13877a', role: 'Investor', by: 'Shahzad', colour: '#46b8a8',
-    what: 'The central bank\'s rate against monthly sales, replayed month by month, with a rate dial and a count of mortgages.', q: 'Who is paying, and with what money?',
+    what: 'How sales moved with the central bank\'s interest rate, and how many of them came with a mortgage.', q: 'Who is paying, and with what money?',
     src: 'views/investor/', own: 'views/investor/' }            // Shahzad's view with the team palette
 ];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
