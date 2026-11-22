@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · shrinking floor plan, two hotspots, map zoom back · 2026-11-21';
+export const BUILD = 'View B · 1 million AED wording · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -1074,7 +1074,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   }
 
   // ---------- your guess first ----------
-  // Before the map, the reader draws what happened to one fixed budget: AED 1 million, a typical
+  // Before the map, the reader draws what happened to one fixed budget: 1 million AED, a typical
   // 80 m² apartment, the same 30 neighbourhoods. The 2015–17 point is given; they draw the rest.
   // Most people draw a steady fall. The data says the opposite first: homes got cheaper until 2020,
   // so the budget reached MORE neighbourhoods (16 → 19), and then 16 went under in one period (→ 3).
@@ -1115,10 +1115,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .html(`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${GUESS};` +
       `margin-right:8px;vertical-align:1px"></span>Before the map: make a guess`);
   gx.append('div').style('font', `800 22px/1.2 ${theme.font}`)
-    .text(`In how many neighbourhoods can AED\u00a0${M}\u00a0million buy a typical apartment?`);
+    .text(`In how many neighbourhoods can ${M}\u00a0million\u00a0AED buy a typical apartment?`);
   gx.append('div').style('font-size', `${theme.size.label + 1}px`).style('line-height', '1.45').style('color', theme.ink)
     .html(`In ${periodLabel(P[0])}: <strong>${truth[0]}&nbsp;of the&nbsp;${gn}</strong> main neighbourhoods, where a typical ` +
-      `${G.size}&nbsp;m² apartment cost AED&nbsp;${M}&nbsp;million or less.`);
+      `${G.size}&nbsp;m² apartment cost ${M}&nbsp;million&nbsp;AED or less.`);
   const task = fold(gx.append('div')).style('max-height', '48px').style('font', `700 ${theme.size.label + 1}px/1.45 ${theme.font}`)
     .style('color', GUESS).text(`Draw your guess up to ${periodLabel(P[L])}.`);
 
@@ -1268,7 +1268,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     phase = 'done';
     // The answer repeats the question's own terms: the budget, the home, the period, the count and out of how many
     const g = guessV[L], r = truth[L], when = periodLabel(P[L]);
-    const answer = `In ${when}, AED&nbsp;${M}&nbsp;million buys a typical ${G.size}&nbsp;m² apartment in ` +
+    const answer = `In ${when}, ${M}&nbsp;million&nbsp;AED buys a typical ${G.size}&nbsp;m² apartment in ` +
       `<span style="color:${theme.depth.deep}">${r < truth[0] ? 'just ' : ''}${r} of the ${gn}</span> neighbourhoods.`;
     const yours = g === r ? `<span style="color:${GUESS}">You guessed ${g}: spot on.</span>`
       : `<span style="color:${GUESS}">You guessed ${g}.</span>`;
