@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rising Tide · One city, four questions</title>
+<meta name="description" content="A CS333 team project: Dubai's property boom, 2015 to 2026, seen by a buyer, a developer, a planner and an investor.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+/* Rising Tide, the joint page. The team's template, in the deep sea: four question tabs across the top,
+   the tilted city with its spikes as the home, and each member's own view opening below the tabs.
+   The views load untouched (the Investor view is a copy with the team palette). */
+:root {
+  --abyss: #06121f;      /* page */
+  --deep: #0b2540;       /* the coastline navy from the buyer's view */
+  --foam: #f2ead9;       /* text */
+  --mist: #93a8bd;       /* quiet text */
+  --line: rgba(242, 234, 217, .12);
+  --ready: #6f8ca8; --offplan: #f2c15c;              /* the spikes: ready flats and off-plan flats */
+  --bar: 60px;           /* the bar inside a view; at home it opens to show the four questions over the sky */
+  --ease: cubic-bezier(.65, 0, .35, 1);
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans: 'DM Sans', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; overflow: hidden; background: var(--abyss); color: var(--foam); font: 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+:focus-visible { outline: 2px solid var(--foam); outline-offset: 2px; }
+#app { position: fixed; inset: 0; }
+
+/* ---------- the bar: the city, then the four questions ---------- */
+#bar { position: absolute; left: 0; right: 0; top: 0; min-height: var(--bar); z-index: 6; display: grid;
+  grid-template-columns: auto 1fr auto; gap: 10px; align-items: stretch; padding: 9px 12px 9px 14px;
+  background: #081b2e; border-bottom: 1px solid var(--line); }
+.brand, .tab { position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, .025);
+  --w: 0%; transition: border-color .4s; }
+.brand::before, .tab::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--w);
+  background: linear-gradient(to top, var(--ca), var(--cb)); box-shadow: inset 0 2px 0 var(--c);
+  transition: height .7s var(--ease); pointer-events: none; }
+.brand > *, .tab > * { position: relative; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 18px 0 12px; --c: #5ea6e4; --ca: rgba(94, 166, 228, .2); --cb: rgba(94, 166, 228, .07); }
+.brand svg { width: 42px; height: 42px; flex: none; transition: width .7s var(--ease), height .7s var(--ease); }
+.brand b { display: block; font: 600 20px/1.1 var(--serif); white-space: nowrap; }
+.brand small { display: block; color: var(--mist); font-size: 12.5px; white-space: nowrap; }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.tab { padding: 8px 14px 8px 13px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.tab .role { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; color: var(--c); }
+.tab .role svg { width: 30px; height: 19px; flex: none; }
+.tab .q { margin-top: 2px; font-size: 13px; line-height: 1.32; color: rgba(242, 234, 217, .86); max-height: 4.2em; overflow: hidden;
+  transition: max-height .7s var(--ease), opacity .4s, margin .7s var(--ease); }   /* each question in full */
+.brand small { max-height: 1.6em; overflow: hidden; transition: max-height .7s var(--ease), opacity .4s; }
+#app:not([data-seat="home"]) .tab .q, #app:not([data-seat="home"]) .brand small { max-height: 0; opacity: 0; margin-top: 0; }
+#app:not([data-seat="home"]) .brand b { font-size: 18px; }
+#app:not([data-seat="home"]) .brand svg { width: 34px; height: 34px; }
+.brand:hover, .tab:hover { --w: 18%; border-color: rgba(242, 234, 217, .22); }
+.brand[aria-current="page"], .tab[aria-current="page"] { --w: 100%; border-color: var(--c); }
+.tab[aria-current="page"] .q { color: var(--foam); }
+.alone { align-self: center; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+  color: var(--mist); text-decoration: none; font-size: 17px; opacity: 0; pointer-events: none; transition: opacity .4s, color .2s; }
+.alone:hover { color: var(--foam); border-color: rgba(242, 234, 217, .3); }
+#app:not([data-seat="home"]) .alone { opacity: 1; pointer-events: auto; }
+
+/* ---------- the stage ---------- */
+#stage { position: absolute; left: 0; right: 0; top: var(--bar); bottom: 0; overflow: hidden; }
+#home { position: absolute; inset: 0; overflow: hidden; transition: opacity .5s var(--ease);
+  background: radial-gradient(120% 75% at 45% 105%, #17507c 0%, #0b2540 45%, var(--abyss) 80%); }
+#waves { position: absolute; left: 0; right: 0; bottom: 0; height: 52%; width: 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 30%, transparent); mask-image: linear-gradient(to top, #000 30%, transparent); }
+#city { position: absolute; inset: 0; width: 100%; height: 100%; }
+.intro { position: absolute; left: 52px; bottom: 40px; max-width: 640px; pointer-events: none; }
+.intro h1 { margin: 0; font: 600 clamp(36px, 4vw, 58px)/1 var(--serif); letter-spacing: -.02em; white-space: nowrap; }
+.waterline { display: block; width: min(100%, 520px); height: 16px; margin: 10px 0 14px; overflow: visible; }
+.waterline path { fill: none; stroke: #5ea6e4; stroke-width: 2; stroke-linecap: round; }
+.intro p { margin: 0; max-width: 50ch; color: #c9d3dd; font-size: 15.5px; line-height: 1.6; }
+.intro p b { color: var(--foam); font-weight: 500; }
+.key { position: absolute; right: 44px; bottom: 42px; text-align: right; max-width: 400px; }
+.key p { margin: 0 0 8px auto; color: var(--mist); font-size: 13px; line-height: 1.5; max-width: 36ch; }
+.key .sw { display: flex; justify-content: flex-end; gap: 16px; font-size: 13px; color: var(--foam); margin-bottom: 12px; }
+.key .sw i { display: inline-block; width: 10px; height: 14px; margin-right: 6px; vertical-align: -2px; border-radius: 1px; }
+.clock { display: flex; justify-content: flex-end; align-items: baseline; gap: 14px; }
+.clock .yr { font: 600 44px/1 var(--serif); font-variant-numeric: tabular-nums; }
+.clock .sold { color: var(--mist); font-size: 13.5px; text-align: left; }
+.clock .sold b { color: var(--foam); font-weight: 500; font-variant-numeric: tabular-nums; }
+.clock button { color: var(--mist); font-size: 13px; border-bottom: 1px solid currentColor; opacity: 0; transition: opacity .4s; white-space: nowrap; }
+.clock button.on { opacity: 1; }
+.clock button:hover { color: var(--foam); }
+.gulf { position: absolute; font: italic 500 15px var(--serif); color: rgba(147, 186, 222, .62); pointer-events: none; white-space: nowrap; }
+.north { position: absolute; width: 44px; height: 44px; pointer-events: none; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.labels span { position: absolute; transform: translate(-50%, -100%); font-size: 12.5px; font-weight: 500; color: var(--foam);
+  white-space: nowrap; text-shadow: 0 1px 3px var(--abyss), 0 0 8px var(--abyss); opacity: 0; transition: opacity .6s; }
+.labels span::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: var(--leader);
+  background: linear-gradient(rgba(242, 234, 217, .8), rgba(242, 234, 217, .12)); }
+.labels.on span { opacity: 1; }
+.ctip { position: absolute; pointer-events: none; padding: 8px 12px; border-radius: 8px; background: rgba(6, 18, 31, .97);
+  border: 1px solid var(--line); font-size: 13px; line-height: 1.5; white-space: nowrap; opacity: 0; transition: opacity .15s; z-index: 2; }
+.ctip b { font-weight: 700; }
+
+/* ---------- the views ---------- */
+#frames { position: absolute; inset: 8px 10px 10px; border-radius: 12px; overflow: hidden; background: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 24px 60px rgba(0, 0, 0, .45); visibility: hidden; }
+#frames iframe { position: absolute; left: 0; top: 0; border: 0; background: #fff; transform-origin: 0 0; visibility: hidden; }
+#frames iframe.on { visibility: visible; }
+#app:not([data-seat="home"]) #frames { visibility: visible; }
+#app:not([data-seat="home"]) #home { opacity: 0; pointer-events: none; }
+
+/* ---------- the tide that carries you between views ---------- */
+#tide { position: absolute; left: 0; right: 0; top: 0; height: calc(100% + 60px); z-index: 5; pointer-events: none;
+  transform: translateY(101%); display: none; }
+#tide.run { display: block; }
+#tide svg { display: block; width: 100%; height: 60px; }
+#tide .body { height: calc(100% - 60px); display: grid; place-items: center; }
+#tide .card { text-align: center; max-width: 21em; padding: 0 24px; font-size: clamp(36px, 4.2vw, 60px); }
+#tide .n { font: 700 16px var(--sans); opacity: .82; }
+#tide h2 { margin: 8px 0 0; font: 600 1em/1.08 var(--serif); letter-spacing: -.02em; }
+#tide .wait { margin-top: 18px; font-size: 13px; color: rgba(242, 234, 217, .72); opacity: 0; transition: opacity .3s; }
+#tide .wait.on { opacity: 1; }
+
+@media (max-width: 980px) {
+  :root { --bar: 106px; }
+  #bar { grid-template-columns: 1fr auto; grid-template-rows: 44px 1fr; }
+  .brand { grid-column: 1; } .alone { grid-column: 2; grid-row: 1; }
+  .tabs { grid-column: 1 / -1; } .tab .q { display: none; }
+  .key { display: none; } .intro { left: 22px; right: 22px; bottom: 24px; } .intro p { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01s !important; animation-duration: .01s !important; }
+}
+</style>
+</head>
+<body>
+<div id="app" data-seat="home">
+  <header id="bar">
+    <button type="button" class="brand" id="homeBtn" aria-current="page" title="The city (Esc)">
+      <svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="20.5" fill="none" stroke="rgba(242,234,217,.3)"/>
+        <path d="M13 26 v-11 h5 v11 M20.5 26 v-16 h4 v16 M27 26 v-8 h4.5 v8" fill="none" stroke="#f2ead9" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M5 27 q4.25 -4.5 8.5 0 t8.5 0 t8.5 0 t8.5 0" fill="none" stroke="#5ea6e4" stroke-width="2" stroke-linecap="round"/>
+        <path d="M8 32.5 q3.5 -3.6 7 0 t7 0 t7 0 t7 0" fill="none" stroke="#5ea6e4" stroke-opacity=".5" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span><b>Rising Tide</b><small>Dubai, 2015 to 2026</small></span>
+    </button>
+    <nav class="tabs" id="tabs" aria-label="The four questions"></nav>
+    <a class="alone" id="alone" href="#" target="_blank" rel="noopener" title="Open this view on its own page" aria-label="Open this view on its own page">↗</a>
+  </header>
+
+  <main id="stage">
+    <section id="home" aria-label="The city">
+      <svg id="waves" aria-hidden="true"></svg>
+      <canvas id="city" role="img" aria-label="Dubai seen from the Gulf: one spike per community, its height set by the flats sold there since 2015, dark for ready flats and gold for flats sold off-plan"></canvas>
+      <div class="labels" id="labels"></div>
+      <span class="gulf" id="gulf">Arabian Gulf</span>
+      <svg class="north" id="north" viewBox="-22 -22 44 44" aria-hidden="true"><g id="northA"><path d="M0,10 V-6" stroke="rgba(242,234,217,.6)" stroke-width="1.4"/><path d="M0,-12 L4.5,-4 L-4.5,-4 Z" fill="rgba(242,234,217,.75)"/></g>
+        <text id="northT" text-anchor="middle" dominant-baseline="central" font-size="9.5" font-weight="700" fill="rgba(242,234,217,.65)" font-family="DM Sans, sans-serif">N</text></svg>
+      <div class="intro">
+        <h1>One city, four questions</h1>
+        <svg class="waterline" viewBox="0 0 520 16" preserveAspectRatio="none" aria-hidden="true"><path id="wl" d=""/></svg>
+        <p>In our sample, Dubai's property sales grew from about <b>2,100</b> in 2015 to <b>10,700</b> in 2025.
+          Each of us asked one question about that boom. Pick one above, or press 1 to 4, to open the view that answers it.</p>
+      </div>
+      <div class="key">
+        <p>Dubai seen from the Gulf. Each spike is a community; it grows with every flat sold there since 2015.</p>
+        <div class="sw"><span><i style="background:var(--ready)"></i>ready</span><span><i style="background:var(--offplan)"></i>off-plan, sold before it was built</span></div>
+        <div class="clock"><span class="yr" id="yr">2015</span><span class="sold"><b id="sold">0</b> flats sold<br><span id="offp">&nbsp;</span></span>
+          <button type="button" id="replay">Replay</button></div>
+      </div>
+      <div class="ctip" id="ctip"></div>
+    </section>
+    <div id="frames"></div>
+    <div id="tide" aria-hidden="true">
+      <svg viewBox="0 0 1200 60" preserveAspectRatio="none"><path id="crest" d=""/></svg>
+      <div class="body"><div class="card"><div class="n" id="tn"></div><h2 id="tt"></h2><div class="wait" id="tw">Loading the view…</div></div></div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+// =====================================================================
+// THE FOUR QUESTIONS, one view each (the template's order)
+// =====================================================================
+const SEATS = [
+  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4',
+    q: 'Where can my budget still buy?',
+    src: '../', alone: '../', fresh: false },                                      // Adam (this repo); opens on its guess, nothing to replay
+  { key: 'developer', role: 'Developer', colour: '#ef8a4c',
+    q: 'Where is apartment buying concentrated, and where are land plots sold?',
+    src: 'https://urwahsheikha.github.io/cs333-view-c/', alone: 'https://urwahsheikha.github.io/cs333-view-c/' },
+  { key: 'planner', role: 'Planner', colour: '#e8656e',
+    q: 'Do sales happen where people live?',
+    src: 'https://babar-nabeel.github.io/Data-Viz-Project/', alone: 'https://babar-nabeel.github.io/Data-Viz-Project/' },
+  { key: 'investor', role: 'Investor', colour: '#46b8a8',
+    q: 'Who is paying, and with what money?',
+    src: 'views/investor/', alone: 'views/investor/' }                              // zmashd's view, palette-matched copy
+];
+// a small drawing of each view's chart, in its colour
+const GLYPH = {
+  buyer: c => `<rect x="9" y="1.5" width="12" height="12" fill="none" stroke="#f2ead9" stroke-width="1.3" stroke-dasharray="2.6 1.8"/>
+    <rect x="11.5" y="6" width="8" height="7.5" fill="#f2ead9" opacity=".25"/>
+    <path d="M1 12.5 q3.5 -3 7 0 t7 0 t7 0 t7 0" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M1 12.5 q3.5 -3 7 0 t7 0 t7 0 t7 0 V19 H1 Z" fill="${c}" opacity=".35"/>`,
+  developer: c => [...Array(5)].map((_, i) => [...Array(3)].map((_, j) =>
+    `<rect x="${1 + i * 5.8}" y="${1.5 + j * 5.8}" width="5" height="5" rx=".8" fill="${c}" opacity="${Math.abs(i - (3 - j * 1.5)) < 1 ? .95 : .2}"/>`).join('')).join(''),
+  planner: c => `<rect x="1" y="1" width="3" height="17" fill="${c}"/><rect x="26" y="1" width="3" height="17" fill="${c}"/>
+    <path d="M4 2 C15 2 15 12 26 12 L26 17 C15 17 15 7 4 7 Z" fill="${c}" opacity=".55"/>
+    <path d="M4 9 C14 9 14 3 26 3 L26 6 C14 6 14 12 4 12 Z" fill="${c}" opacity=".3"/>`,
+  investor: c => `<path d="M1 16 L6 13 L10 14.5 L15 7 L20 9 L24 3 L29 4.5" fill="none" stroke="${c}" stroke-width="1.7" stroke-linejoin="round"/>
+    ${[[1,16],[6,13],[10,14.5],[15,7],[20,9],[24,3],[29,4.5]].map(([x,y]) => `<circle cx="${x}" cy="${y}" r="1.6" fill="${c}"/>`).join('')}`
+};
+
+const app = document.getElementById('app');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rgba = (hex, a) => { const c = d3.color(hex); c.opacity = a; return c.formatRgb(); };
+const tabsEl = document.getElementById('tabs'), homeBtn = document.getElementById('homeBtn');
+SEATS.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'tab'; b.dataset.key = s.key;
+  b.style.setProperty('--c', s.colour); b.style.setProperty('--ca', rgba(s.colour, .26)); b.style.setProperty('--cb', rgba(s.colour, .1));
+  b.title = `${s.role} (key ${i + 1})`;
+  b.innerHTML = `<span class="role"><svg viewBox="0 0 30 19" aria-hidden="true">${GLYPH[s.key](s.colour)}</svg>${s.role}</span><span class="q">${s.q}</span>`;
+  b.addEventListener('click', () => go(s.key));
+  tabsEl.appendChild(b); s.btn = b;
+});
+homeBtn.addEventListener('click', () => go('home'));
+const barEl = document.getElementById('bar');
+
+// =====================================================================
+// THE VIEWS: one iframe each, loaded quietly in the background
+// =====================================================================
+const framesEl = document.getElementById('frames');
+const MIN_W = 1240;          // the views are laid out for at least this width; a narrower stage shows them slightly smaller
+const frames = {};
+function fit(f) {
+  const Wf = framesEl.clientWidth, Hf = framesEl.clientHeight, k = Wf < MIN_W ? Wf / MIN_W : 1;
+  f.el.style.width = Wf / k + 'px'; f.el.style.height = Hf / k + 'px'; f.el.style.transform = k < 1 ? `scale(${k})` : '';
+  const size = `${Math.round(Wf)}x${Math.round(Hf)}`;
+  if (f.size && f.size !== size && !f.el.classList.contains('on')) f.stale = true;   // the buyer's view sizes itself once: reload before showing
+  f.size = size;
+}
+// ready = the page has loaded; for the buyer's view (same site) also wait until its map is drawn, so it appears whole
+function whenReady(f) {
+  return new Promise(res => f.el.addEventListener('load', async () => {
+    if (f.seat.key === 'buyer') for (let i = 0; i < 120; i++) {
+      try { if (f.el.contentWindow.__viewB) break; } catch (e) { break; }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    f.ready = true; res();
+  }, { once: true }));
+}
+function frame(s) {
+  if (frames[s.key]) return frames[s.key];
+  const el = document.createElement('iframe');
+  el.title = `The ${s.role.toLowerCase()}'s view: ${s.q}`;
+  el.setAttribute('allow', 'fullscreen');
+  const f = frames[s.key] = { el, seat: s, ready: false, shown: false };
+  f.loaded = whenReady(f);
+  framesEl.appendChild(el); fit(f); el.src = s.src;
+  return f;
+}
+function reload(f) {          // a fresh start, so the view opens the way its author made it (its data come from the cache)
+  f.ready = false; f.stale = false; f.loaded = whenReady(f); fit(f); f.el.src = f.el.src;
+}
+let preloading = false;
+function preloadAll() {       // one at a time, after the city has risen
+  if (preloading) return; preloading = true;
+  (async () => { for (const s of SEATS) { const f = frame(s); await Promise.race([f.loaded, new Promise(r => setTimeout(r, 15000))]); } })();
+}
+addEventListener('resize', () => Object.values(frames).forEach(fit));
+
+// =====================================================================
+// MOVING BETWEEN VIEWS: the tide rises, names the question, and drains away
+// =====================================================================
+const tide = document.getElementById('tide'), crest = document.getElementById('crest');
+const wave = (w, amp, n, y) => { let d = `M0 ${y}`; const step = w / n;
+  for (let i = 0; i < n; i++) d += ` Q${i * step + step / 4} ${y - amp} ${i * step + step / 2} ${y} T${(i + 1) * step} ${y}`; return d; };
+crest.setAttribute('d', wave(2400, 16, 8, 30) + ' V60 H0 Z');
+const seatOf = key => SEATS.find(s => s.key === key) || null;
+const alone = document.getElementById('alone');
+let busy = false, queued = null;
+
+async function go(key, { instant = false, push = true } = {}) {
+  if (key !== 'home' && !seatOf(key)) key = 'home';
+  if (busy) { queued = key; return; }
+  if (key === app.dataset.seat) return;
+  busy = true;
+  const s = seatOf(key);
+  if (push) history.pushState(null, '', key === 'home' ? location.pathname + location.search : '#' + key);
+
+  document.getElementById('tn').textContent = s ? `The ${s.role.toLowerCase()}` : 'Rising Tide';
+  document.getElementById('tt').textContent = s ? s.q : 'Back to the city';
+  const top = s ? s.colour : '#2f6a9c';
+  crest.setAttribute('fill', top);
+  tide.querySelector('.body').style.background = `linear-gradient(${top}, ${d3.interpolateLab(top, '#0b2540')(.6)} 28%, #08192b)`;
+  const card = tide.querySelector('.card'); card.style.opacity = 0;
+
+  const f = s ? frame(s) : null;
+  if (f && ((!f.shown && f.ready && s.fresh !== false) || f.stale)) reload(f);
+  const T = instant || reduce ? 0 : 1;
+
+  // the chosen tab fills with water as the tide comes in
+  if (s) homeBtn.removeAttribute('aria-current'); else homeBtn.setAttribute('aria-current', 'page');
+  SEATS.forEach(x => x === s ? x.btn.setAttribute('aria-current', 'page') : x.btn.removeAttribute('aria-current'));
+
+  tide.classList.add('run');
+  const drift = T ? crest.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-50%)' }], { duration: 2600, iterations: Infinity }) : null;
+  await tide.animate([{ transform: 'translateY(101%)' }, { transform: 'translateY(-60px)' }],
+    { duration: T ? 560 : 1, easing: 'cubic-bezier(.55,0,.45,1)', fill: 'forwards' }).finished;
+  if (T) card.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 300, fill: 'forwards' });
+  else card.style.opacity = 1;
+
+  // swap what is under the water
+  app.dataset.seat = key;
+  Object.values(frames).forEach(fr => fr.el.classList.remove('on'));
+  alone.href = s ? s.alone : '#';
+  const wait = document.getElementById('tw'), t0 = performance.now();
+  if (f && !f.ready) { const tm = setTimeout(() => wait.classList.add('on'), 700);
+    await Promise.race([f.loaded, new Promise(r => setTimeout(r, 20000))]); clearTimeout(tm); }
+  if (f) { f.shown = true; f.el.classList.add('on'); }
+  if (!s) redrawCity();
+  await new Promise(r => setTimeout(r, T ? Math.max(0, 700 - (performance.now() - t0)) : 0));
+  wait.classList.remove('on');
+
+  await tide.animate([{ transform: 'translateY(-60px)' }, { transform: 'translateY(101%)' }],
+    { duration: T ? 620 : 1, easing: 'cubic-bezier(.45,0,.3,1)', fill: 'forwards' }).finished;
+  drift && drift.cancel();
+  tide.classList.remove('run');
+  busy = false;
+  if (queued !== null) { const q = queued; queued = null; go(q); }
+}
+addEventListener('popstate', () => go(location.hash.slice(1) || 'home', { push: false }));
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const i = SEATS.findIndex(s => s.key === app.dataset.seat);
+  if (/^[1-4]$/.test(e.key)) go(SEATS[+e.key - 1].key);
+  else if (e.key === 'Escape' || e.key === '0') go('home');
+  else if (['ArrowRight', 'PageDown'].includes(e.key)) { e.preventDefault(); go(i < SEATS.length - 1 ? SEATS[i + 1].key : 'home'); }
+  else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); go(i === -1 ? SEATS[SEATS.length - 1].key : i === 0 ? 'home' : SEATS[i - 1].key); }
+});
+
+// =====================================================================
+// HOME: the city seen from the Gulf, one spike per community
+// Data: city.json, built from the course files (transactions.csv, dubai.geojson) by tools/prep_city.py:
+// flat sales (Unit / Flat), 1 Jan 2015 to 31 Aug 2026, per community and year, and how many were off-plan.
+// The same filter as the buyer's and the planner's views.
+// =====================================================================
+const NICK = { 681: 'JVC', 346: 'Business Bay', 392: 'Dubai Marina', 345: 'Downtown', 631: 'Dubai Hills', 415: 'Creek Harbour',
+  393: 'JLT', 621: 'International City', 521: 'Dubai South', 626: 'Silicon Oasis', 321: 'Maritime City' };
+const canvas = document.getElementById('city'), ctx = canvas.getContext('2d'), stageEl = document.getElementById('stage');
+const labelsEl = document.getElementById('labels'), ctip = document.getElementById('ctip');
+const yrEl = document.getElementById('yr'), soldEl = document.getElementById('sold'), offEl = document.getElementById('offp'), replayBtn = document.getElementById('replay');
+const N_YEARS = 12, READY = '#6f8ca8', OFF = '#f2c15c';
+let barHome = 0, C = null, W = 0, H = 0, HMAX = 100, MAXT = 1, TW = 5, towers = [], tNow = 0, hover = null, built = false;
+
+const upTo = (arr, cum, t) => { if (t <= 0) return 0; if (t >= N_YEARS) return cum[N_YEARS - 1];
+  const k = Math.floor(t); return (k ? cum[k - 1] : 0) + (t - k) * arr[k]; };
+const soldAt = (c, t) => upTo(c.y, c.cy, t), offAt = (c, t) => upTo(c.o, c.co, t);
+
+// The map leans back (K) and narrows with distance, so the Gulf is in front and the desert far behind.
+function layoutCity() {
+  const r = canvas.getBoundingClientRect(); W = r.width; H = r.height;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const merc = d3.geoMercator().scale(1000).translate([0, 0]);
+  const a = merc([55.03, 25.0]), b = merc([55.35, 25.30]);               // Jebel Ali to Deira, along the coast
+  const phi = Math.PI - Math.atan2(b[1] - a[1], b[0] - a[0]);           // turn the coast flat, the Gulf in front
+  const cos = Math.cos(phi), sin = Math.sin(phi), K = .44;               // K = how far we lean back (0 = flat, 1 = from above)
+  const rot = p => { const [x, y] = merc(p); return [x * cos - y * sin, (x * sin + y * cos) * K]; };
+  C.comms.forEach(c => { c.P = c.rings.map(ring => ring.map(rot)); c.p0 = rot(c.c); });
+  const busy = C.comms.filter(c => c.total > 0);
+  const [y0, y1] = d3.extent(busy, c => c.p0[1]), [xa, xb] = d3.extent(busy, c => c.p0[0]), xm = (xa + xb) / 2;
+  const depth = y => .72 + .28 * Math.max(-.6, Math.min(1.25, (y - y0) / (y1 - y0)));   // farther = smaller
+  const persp = ([x, y]) => [xm + (x - xm) * depth(y), y];
+  C.comms.forEach(c => { c.P = c.P.map(ring => ring.map(persp)); c.f = depth(c.p0[1]); c.p0 = persp(c.p0); });
+  const pts = busy.map(c => c.p0);
+  const [x0, x1] = d3.extent(pts, p => p[0]), [Y0, Y1] = d3.extent(pts, p => p[1]);
+  const narrow = W < 900, L = narrow ? 30 : 60, R = narrow ? 30 : 60;
+  if (app.dataset.seat === 'home' && !busy) barHome = barEl.offsetHeight;  // measured while the bar is open; it may be folding right now
+  const sky = Math.max(0, (barHome || barEl.offsetHeight) - (stageEl.getBoundingClientRect().top || 0)) + 10;   // the open bar covers the top of the sky
+  const top = sky + (H - sky) * .34, bottom = narrow ? H * .3 : H * .31;   // the city's footprint; the spikes rise above it
+  HMAX = Math.max(70, Math.min((H - sky) * .26, top - sky - 40));
+  const s = Math.min((W - L - R) / (x1 - x0), (H - top - bottom) / (Y1 - Y0));
+  const ox = L + (W - L - R - s * (x1 - x0)) / 2 - s * x0, oy = top + (H - top - bottom - s * (Y1 - Y0)) / 2 - s * Y0;
+  const S = ([x, y]) => [ox + s * x, oy + s * y];
+  C.comms.forEach(c => { c.S = c.P.map(ring => ring.map(S)); [c.x, c.y0] = S(c.p0); });
+  TW = Math.max(3, Math.min(6.5, W / 200));
+  towers = busy.sort((p, q) => p.y0 - q.y0);                         // back to front
+  // the sea's name and a north arrow, in open water in front of the city
+  const front = d3.max(towers, c => c.y0), gy = Math.min(H - 70, front + 48);
+  const gulf = document.getElementById('gulf'), north = document.getElementById('north');
+  gulf.style.left = (W * .5) + 'px'; gulf.style.top = gy + 'px';
+  north.style.left = (W * .5 + gulf.offsetWidth + 14) + 'px'; north.style.top = (gy - 12) + 'px';
+  const nAng = Math.atan2(sin, cos * K) * 180 / Math.PI;               // north on screen, clockwise from straight up
+  document.getElementById('northA').setAttribute('transform', `rotate(${nAng})`);
+  const rad = nAng * Math.PI / 180;
+  d3.select('#northT').attr('x', Math.sin(rad) * 18).attr('y', -Math.cos(rad) * 18);
+}
+
+function ringPath(ring) { ctx.moveTo(ring[0][0], ring[0][1]); for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i][0], ring[i][1]); ctx.closePath(); }
+const shade = (col, k) => d3.interpolateLab('#04101c', col)(k);
+function drawCity() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineJoin = 'round';
+  // the land: every community, faint; the ones with flat sales a touch lighter
+  ctx.beginPath(); C.comms.forEach(c => { if (!c.total) c.S.forEach(ringPath); }); ctx.fillStyle = '#0d2238'; ctx.fill();
+  ctx.beginPath(); towers.forEach(c => c.S.forEach(ringPath)); ctx.fillStyle = '#122f4b'; ctx.fill();
+  ctx.beginPath(); C.comms.forEach(c => c.S.forEach(ringPath)); ctx.strokeStyle = 'rgba(160,186,212,.15)'; ctx.lineWidth = .7; ctx.stroke();
+  const haze = ctx.createLinearGradient(0, 0, 0, H * .5);                // the far desert fades into the night
+  haze.addColorStop(0, 'rgba(6,18,31,.92)'); haze.addColorStop(1, 'rgba(6,18,31,0)');
+  ctx.fillStyle = haze; ctx.fillRect(0, 0, W, H * .5);
+  if (hover) { ctx.beginPath(); hover.S.forEach(ringPath); ctx.fillStyle = 'rgba(242,234,217,.08)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(242,234,217,.75)'; ctx.lineWidth = 1.2; ctx.stroke(); }
+  // the spikes, back to front: ready flats below, off-plan flats on top
+  towers.forEach(c => {
+    const v = soldAt(c, tNow), o = offAt(c, tNow), h = HMAX * Math.pow(v / MAXT, .72) * c.f;
+    c.h = h;
+    if (v <= 0) return;
+    const a = TW * c.f, b = a * .5, x = c.x, y = c.y0, hr = h * (1 - o / v), lit = c === hover;
+    const pool = ctx.createRadialGradient(x, y, 0, x, y, a * 4.5);       // a soft pool of light on the ground
+    pool.addColorStop(0, rgba(o / v > .5 ? OFF : READY, .3)); pool.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = pool; ctx.beginPath(); ctx.ellipse(x, y, a * 4.5, a * 2.2, 0, 0, 2 * Math.PI); ctx.fill();
+    if (h < 1) return;
+    const face = (x1, y1, x2, y2, from, to, col, k) => {
+      const g = ctx.createLinearGradient(0, y - from, 0, y - to);
+      g.addColorStop(0, shade(col, k * .55)); g.addColorStop(1, shade(col, k));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x1, y1 - from); ctx.lineTo(x2, y2 - from); ctx.lineTo(x2, y2 - to); ctx.lineTo(x1, y1 - to); ctx.closePath(); ctx.fill();
+    };
+    const L1 = lit ? 1 : .92, L2 = lit ? .8 : .62;
+    if (hr > 0) { face(x - a, y, x, y + b, 0, hr, READY, L1); face(x, y + b, x + a, y, 0, hr, READY, L2); }
+    if (h - hr > 0) { face(x - a, y, x, y + b, hr, h, OFF, L1); face(x, y + b, x + a, y, hr, h, OFF, L2); }
+    ctx.beginPath(); ctx.moveTo(x - a, y - h); ctx.lineTo(x, y - h - b); ctx.lineTo(x + a, y - h); ctx.lineTo(x, y + b - h); ctx.closePath();
+    ctx.fillStyle = lit ? '#ffffff' : d3.interpolateLab(o > 0 ? OFF : READY, '#ffffff')(.4); ctx.fill();
+  });
+}
+
+function setClock(t) {
+  yrEl.textContent = t >= N_YEARS ? '2026' : String(2015 + Math.min(N_YEARS - 1, Math.floor(t)));
+  const v = d3.sum(towers, c => soldAt(c, t)), o = d3.sum(towers, c => offAt(c, t));
+  soldEl.textContent = d3.format(',')(Math.round(v));
+  offEl.textContent = v ? `${Math.round(o / v * 100)}% of them off-plan` : ' ';
+}
+
+function placeLabels() {                 // name the six busiest, without letting names collide
+  labelsEl.innerHTML = '';
+  const boxes = [];
+  towers.filter(c => NICK[c.id]).sort((a, b) => b.total - a.total).slice(0, 6).sort((a, b) => b.h - a.h).forEach(c => {
+    const name = NICK[c.id], w = name.length * 7 + 10, x = c.x, roof = c.y0 - c.h - TW * c.f * .5 - 2;
+    let lead = 14;
+    const clash = () => boxes.some(bx => Math.abs(bx.x - x) < (bx.w + w) / 2 + 6 && Math.abs(bx.y - (roof - lead)) < 20)
+      || towers.some(t => t !== c && Math.abs(t.x - x) < w / 2 + 3 && t.y0 - t.h < roof - lead + 4 && t.y0 > roof - lead - 16);
+    while (lead < 220 && clash()) lead += 16;
+    boxes.push({ x, y: roof - lead, w });
+    const el = document.createElement('span'); el.textContent = name;
+    el.style.left = x + 'px'; el.style.top = (roof - lead) + 'px'; el.style.setProperty('--leader', (lead - 3) + 'px');
+    labelsEl.appendChild(el);
+  });
+  requestAnimationFrame(() => labelsEl.classList.add('on'));
+}
+
+let raf = null;
+function build() {
+  cancelAnimationFrame(raf); labelsEl.classList.remove('on'); replayBtn.classList.remove('on'); built = false;
+  const DUR = reduce ? 1 : 4400, start = performance.now() + (reduce ? 0 : 400), ease = d3.easeCubicInOut;
+  const step = now => {
+    const k = Math.max(0, Math.min(1, (now - start) / DUR));
+    tNow = ease(k) * N_YEARS; drawCity(); setClock(tNow);
+    if (k < 1) raf = requestAnimationFrame(step);
+    else { built = true; placeLabels(); replayBtn.classList.add('on'); preloadAll(); }
+  };
+  raf = requestAnimationFrame(step);
+}
+replayBtn.addEventListener('click', build);
+
+function hit(x, y) {
+  for (let i = towers.length - 1; i >= 0; i--) { const c = towers[i], a = TW * c.f + 3;
+    if (c.h > 0 && Math.abs(x - c.x) <= a && y <= c.y0 + a * .6 && y >= c.y0 - c.h - a) return c; }
+  for (let i = C.comms.length - 1; i >= 0; i--) { const c = C.comms[i]; if (c.S.some(r => d3.polygonContains(r, [x, y]))) return c; }
+  return null;
+}
+canvas.addEventListener('mousemove', e => {
+  if (!C) return;
+  const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, c = hit(x, y);
+  if (c !== hover) { hover = c; drawCity(); }
+  if (!c) { ctip.style.opacity = 0; return; }
+  const v = Math.round(soldAt(c, tNow)), o = Math.round(offAt(c, tNow)), until = tNow >= N_YEARS ? 'August 2026' : yrEl.textContent;
+  ctip.innerHTML = `<b>${NICK[c.id] || c.name}</b><br>` + (v
+    ? `${d3.format(',')(v)} flat${v === 1 ? '' : 's'} sold, 2015 to ${until}<br>${Math.round(o / v * 100)}% of them off-plan`
+    : 'No flats sold here in the sample');
+  const tw = ctip.offsetWidth, left = x + 16 + tw > W - 10 ? x - 16 - tw : x + 16;
+  ctip.style.left = left + 'px'; ctip.style.top = Math.max(8, y - 50) + 'px'; ctip.style.opacity = 1;
+});
+canvas.addEventListener('mouseleave', () => { hover = null; ctip.style.opacity = 0; if (C) drawCity(); });
+
+function drawWaves() {                   // the Gulf in front of the city
+  const svg = d3.select('#waves'), w = svg.node().clientWidth, h = svg.node().clientHeight;
+  svg.attr('viewBox', `0 0 ${w} ${h}`).selectAll('*').remove();
+  for (let i = 0; i < 16; i++) {
+    const y = h * (i / 16) ** 1.4 + 6, amp = 1.5 + i * .35, len = 60 + i * 9;
+    svg.append('path').attr('d', wave(w + len * 2, amp, Math.ceil((w + len * 2) / len), y))
+      .attr('transform', `translate(${-(i * 37) % len},0)`)
+      .attr('fill', 'none').attr('stroke', '#5ea6e4').attr('stroke-opacity', .05 + i * .011).attr('stroke-width', 1);
+  }
+}
+function drawWaterline() {
+  const p = document.getElementById('wl'); p.setAttribute('d', wave(520, 5, 7, 8));
+  if (reduce) return;
+  const L = p.getTotalLength(); p.style.strokeDasharray = L;
+  p.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: 1800, easing: 'cubic-bezier(.65,0,.35,1)', delay: 300, fill: 'backwards' });
+}
+function redrawCity() { if (!C) return; layoutCity(); drawCity(); drawWaves(); if (built) placeLabels(); }
+let rT;
+addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (app.dataset.seat === 'home') redrawCity(); }, 120); });
+
+// ---------------------------------------------------------------------
+// start
+// ---------------------------------------------------------------------
+(async () => {
+  try { await document.fonts.ready; } catch (e) {}
+  drawWaterline();
+  C = await fetch('city.json').then(r => r.json());
+  // left out: Hatta, the exclave far inland, and Jabal Ali Third, the port zone that reaches out over the water (no flat sales in either)
+  C.comms = C.comms.filter(c => c.id !== 593 && c.name !== 'Hatta');
+  C.comms.forEach(c => { c.total = d3.sum(c.y); c.cy = d3.cumsum(c.y); c.co = d3.cumsum(c.o); });
+  MAXT = d3.max(C.comms, c => c.total);
+  layoutCity(); drawWaves(); build();
+  const first = location.hash.slice(1);
+  if (seatOf(first)) go(first, { push: false });
+})();
+</script>
+</body>
+</html>
