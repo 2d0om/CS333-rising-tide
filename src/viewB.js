@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · floor plan shows growth too, period named · 2026-11-22';
+export const BUILD = 'View B · drawn guess keeps its numbers · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -1325,6 +1325,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const guessPath = gsvg.append('path').attr('fill', 'none').attr('stroke', GUESS).attr('stroke-width', 2.8)
     .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
   const gGuessDots = gsvg.append('g').attr('pointer-events', 'none');
+  const gGuessLabs = gsvg.append('g').attr('pointer-events', 'none');   // every drawn point keeps its number
   const liveLabel = gsvg.append('text').attr('fill', GUESS).attr('paint-order', 'stroke').attr('stroke', '#ffffff')
     .attr('stroke-width', 3.5).style('font', `700 12px ${theme.font}`).attr('pointer-events', 'none');
   const gKey = gsvg.append('g').attr('pointer-events', 'none').attr('opacity', 0);
@@ -1369,10 +1370,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     guessPath.attr('d', k ? d3.line()(pts) : null);
     gGuessDots.selectAll('circle').data(pts.slice(1)).join('circle').attr('r', 4.5).attr('fill', GUESS)
       .attr('stroke', '#ffffff').attr('stroke-width', 1.5).attr('cx', d => d[0]).attr('cy', d => d[1]);
-    if (active != null) {
-      const [ax, ay] = xy(active, guessV[active]);
-      liveLabel.attr('x', ax + 9).attr('y', ay - 9).text(guessV[active]);
-    }
+    // the number above each drawn point, so the guess can be read after letting go (bolder while drawing it)
+    gGuessLabs.selectAll('text').data(d3.range(1, k + 1)).join('text').attr('text-anchor', 'middle').attr('fill', GUESS)
+      .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5).attr('stroke-linejoin', 'round')
+      .style('font', i => `${i === active ? 800 : 700} ${i === active ? 13 : 12}px ${theme.font}`)
+      .attr('x', i => xy(i, guessV[i])[0]).attr('y', i => xy(i, guessV[i])[1] - 10).text(i => guessV[i]);
     styleGo(k === L);
   }
   function drawAt([x, y]) {
@@ -1417,6 +1419,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const SEG = reduceMotion ? 0 : 1300, DRAW = SEG * 0.8;
     const labelAt = i => {      // the real number, on the side away from the guess
       const [x, y] = xy(i, truth[i]), below = guessV[i] > truth[i];
+      gGuessLabs.selectAll('text').filter(j => j === i).transition().duration(SEG ? 250 : 0)
+        .attr('opacity', guessV[i] === truth[i] ? 0 : 1).attr('y', xy(i, guessV[i])[1] + (guessV[i] < truth[i] ? 19 : -10));
       gTruth.append('text').attr('x', x).attr('y', below ? y + 19 : y - 11).attr('text-anchor', 'middle')
         .attr('fill', theme.depth.deep).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
         .style('font', `800 13px ${theme.font}`).attr('opacity', 0).text(truth[i])
