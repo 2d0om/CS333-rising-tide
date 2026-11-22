@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · bigger title that fills with water as the budget drops · 2026-11-22';
+export const BUILD = 'View B · final spacing pass · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -305,7 +305,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
 
   // 1. The finding: one sentence with two labelled numbers, and beside them the home that budget buys
   //    (the niche: the same money buys a smaller home), as two floor plans drawn to the same scale.
-  const headline = panel.append('div').style('min-height', '112px');
+  const headline = panel.append('div').style('min-height', '112px').style('flex', 'none');   // never squeezed under the next row
   const headLead = headline.append('div').style('font-size', `${theme.size.label + 1.5}px`).style('line-height', '1.4');
   const headRow = headline.append('div').style('display', 'flex').style('align-items', 'flex-end').style('gap', '12px')
     .style('margin', '6px 0 5px');
@@ -422,7 +422,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '8px 10px')
     .style('font-size', '11px').style('line-height', '1.35').style('pointer-events', 'none');
   const kw = KEY_W - 22;
-  const legScale = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '2px');
+  const legScale = legend.append('div').style('display', 'flex').style('flex-direction', 'column').style('gap', '4px');
   const legSvg = legScale.append('svg').attr('width', kw).attr('height', 30).attr('aria-hidden', true);
   const kg = legSvg.append('defs').append('linearGradient').attr('id', 'vb-key');
   [...d3.range(0, 0.5, 0.05), 0.4999, 0.5, ...d3.range(0.55, 1.001, 0.05)]
@@ -555,7 +555,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const usedH = d3.sum(kids, n => n.getBoundingClientRect().height) + 12 * kids.length - 6 * 3;
   const chartH = Math.max(220, Math.min(440, panelH - usedH));
   const chart = chartBox.append('svg').attr('width', CW).attr('height', chartH).style('display', 'block').style('overflow', 'visible');
-  const cm = { l: 34, r: 118, t: 24 };                 // the right margin holds the line names
+  const cm = { l: 34, r: 50, t: 10 };                  // the right margin holds each line's last value
   const plotB = chartH - 24;
   const yx = d3.scaleLinear().domain([YEARS[0], YEARS[YEARS.length - 1]]).range([cm.l + 8, CW - cm.r - 8]);
   const ym = d3.scaleLinear().range([plotB, cm.t]);
@@ -602,9 +602,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   ssvg.append('defs').append('filter').attr('id', 'vb-knob-shadow').attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
     .append('feDropShadow').attr('dx', 0).attr('dy', 1.5).attr('stdDeviation', 2).attr('flood-color', '#0b2540').attr('flood-opacity', 0.28);
   const barX = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([labW + 12, mapW - 14]).clamp(true);
-  ssvg.append('text').attr('x', 2).attr('y', 11).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
+  ssvg.append('text').attr('x', 2).attr('y', 10).attr('fill', theme.quiet).style('font', `700 10.5px ${theme.font}`)
     .style('letter-spacing', '0.08em').text('YOUR BUDGET');
-  const sVal = ssvg.append('text').attr('x', 2).attr('y', 35).attr('fill', theme.ink)
+  const sVal = ssvg.append('text').attr('x', 2).attr('y', 37).attr('fill', theme.ink)
     .style('font', `800 21px ${theme.font}`).style('font-variant-numeric', 'tabular-nums');
   const sHit = ssvg.append('rect').attr('x', barX.range()[0] - 10).attr('y', 2).attr('width', barX.range()[1] - barX.range()[0] + 20)
     .attr('height', 40).attr('fill', 'transparent').style('cursor', 'pointer');
@@ -637,7 +637,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // ---------- tooltip ----------
   const tip = root.append('div').style('position', 'absolute').style('pointer-events', 'none')
     .style('background', '#ffffff').style('border', `1px solid ${theme.grid}`).style('border-radius', '8px')
-    .style('padding', '7px 10px').style('font-size', `${theme.size.small}px`).style('line-height', '1.45')
+    .style('padding', '8px 11px').style('font-size', `${theme.size.small}px`).style('line-height', '1.55')
     .style('box-shadow', '0 2px 8px rgba(0,0,0,0.08)').style('max-width', '280px').style('opacity', 0).style('z-index', 3);
   function showTip(event, html) {
     const [x, y] = d3.pointer(event, container);
@@ -850,13 +850,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const home = `a typical ${s.size} m² ${homeWord()}`;
     const money = `<strong>${aed(s.budget)}</strong>`;
     const num = (v, c, t) => `<div><div style="font-size:44px;font-weight:800;line-height:1;color:${c};font-variant-numeric:tabular-nums">${v}</div>` +
-      `<div style="font-size:11px;color:${theme.quiet};margin-top:3px">${t}</div></div>`;
+      `<div style="font-size:11px;color:${theme.quiet};margin-top:5px">${t}</div></div>`;
     const cheapest = Sp => d3.min(C.set, c => Sp.get(c).edge);
     let lead, nums = '', foot = '';
     if (!C.n) lead = 'Too few sales of these homes to compare neighbourhoods.';
     else if (C.k1 === 0 && C.k2 === 0) {
       lead = `${money} doesn't buy ${home} in any of the ${C.n} neighbourhoods${same ? ` in ${periodLabel(s.period)}` : ', then or now'}.`;
-      foot = `<div style="font-size:${theme.size.label}px;line-height:1.45">The cheapest needed <strong>${aed(cheapest(Sthen))}</strong>` +
+      // said beside the floor plan (where the big numbers would be), so the headline keeps its height
+      nums = `<div style="font-size:${theme.size.small + 0.5}px;line-height:1.45;color:${theme.ink}">The cheapest needed <strong>${aed(cheapest(Sthen))}</strong>` +
         `${same ? '' : ` in ${periodLabel(s.thenPeriod)} and <strong>${aed(cheapest(S))}</strong> in ${periodLabel(s.period)}`}.</div>`;
     } else if (C.k1 === C.n && C.k2 === C.n) {
       lead = `${money} buys ${home} in all ${C.n} neighbourhoods${same ? ` in ${periodLabel(s.period)}` : ', then and now'}.`;
@@ -873,7 +874,6 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       .style('background-position', `0 ${(under * 100).toFixed(1)}%`);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
-    chartHead.html('The home your budget buys, in m²');
   }
 
   function drawLegend(s, same) {
@@ -1017,6 +1017,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     }
     const all = sel ? [...lines, sel] : lines;
     ringView = { lines: all };
+    chartHead.html('The home your budget buys, in m²' + (sel ? `<span style="font-weight:600;color:${theme.accent};margin-left:10px">` +
+      `<span style="display:inline-block;width:16px;border-top:2.5px dashed ${theme.accent};vertical-align:middle;margin-right:5px"></span>${sel.label}</span>` : ''));
 
     const vmax = d3.max(all, L => d3.max(L.pts, d => d.v)) || size;
     ym.domain([0, Math.max(size * 1.3, vmax * 1.18)]).nice(4);
@@ -1068,7 +1070,18 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       const us = unders.slice().sort((a, b) => a.x - b.x), parts = ['under in ', ...us.flatMap((u, i) => i ? [' · ', u] : [u])];
       const txt = parts.map(q => typeof q === 'string' ? q : q.year).join(''), w = textW(txt, 10.5, 700);
       const xr = Math.min(CW - cm.r - 2, Math.max(cm.l + w, us[us.length - 1].x + 30));
-      const t = gUnder.append('text').attr('x', xr).attr('y', below ? wy + 15 : wy - 9).attr('text-anchor', 'end')
+      // the first height (just under the waterline, then lower in the sea, then above it) where no line
+      // runs through the label
+      const y0 = yx.invert(xr - w), y1 = yx.invert(xr);
+      const clear = ty => !all.some(L => L.pts.some((d, i) => {
+        const e = L.pts[i + 1];
+        if (d.v == null || !e || e.v == null || e.y < y0 || d.y > y1) return false;
+        const lo = Math.min(ym(d.v), ym(e.v)), hi = Math.max(ym(d.v), ym(e.v));
+        return hi > ty - 13 && lo < ty + 4;
+      }));
+      const tries = [wy + 15, wy + 30, wy + 45, plotB - 6, wy - 9].filter(ty => ty > cm.t + 10 && ty < plotB - 2);
+      const ty = tries.find(clear) ?? (below ? wy + 15 : wy - 9);
+      const t = gUnder.append('text').attr('x', xr).attr('y', ty).attr('text-anchor', 'end')
         .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `700 10.5px ${theme.font}`);
       parts.forEach(q => t.append('tspan').attr('fill', typeof q === 'string' ? theme.ink : q.L.text).text(typeof q === 'string' ? q : q.year));
     }
@@ -1094,13 +1107,13 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     // names at the right, spread so they never overlap
     const ends = all.map(L => { const P = L.pts.filter(d => d.v != null), e = P[P.length - 1]; return e && { L, y: ym(e.v), v: e.v }; })
       .filter(Boolean).sort((a, b) => a.y - b.y);
-    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
     const over = ends.length ? ends[ends.length - 1].y - (plotB + 4) : 0;
     if (over > 0) ends.forEach(e => { e.y -= over; });
     gEnd.selectAll('text').data(ends, e => e.L.key).join(enter => enter.append('text').attr('y', e => e.y))
       .attr('x', CW - cm.r + 8).attr('dy', '0.35em').attr('fill', e => e.L.text)
       .style('font', e => `${e.L.ring == null ? 700 : 600} 11px ${theme.font}`).style('cursor', 'default')
-      .text(e => e.L.ring == null ? `${e.L.name} · ${Math.round(e.v)} m²` : `${Math.round(e.v)} m²`)
+      .text(e => `${Math.round(e.v)} m²`)
       .on('mouseenter', (event, e) => outlineRing(e.L.ring)).on('mouseleave', () => outlineRing(null))
       .call(p => go(p).attr('y', e => e.y))
       .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? e.L.label : `${e.L.label}: ${RINGS[e.L.ring].desc}, ${RINGS[e.L.ring].members.length} neighbourhoods`); });
@@ -1130,7 +1143,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         .style('line-height', '1.25').style('transition', 'background-color .2s, color .2s, box-shadow .2s');
       bEl.append('div').attr('class', 'pl').style('font-size', '11px').style('font-weight', 600)
         .style('display', 'flex').style('align-items', 'center').style('gap', '5px');
-      bEl.append('div').attr('class', 'pr').style('font-weight', 700).style('font-variant-numeric', 'tabular-nums').style('margin-top', '2px');
+      bEl.append('div').attr('class', 'pr').style('font-weight', 700).style('font-variant-numeric', 'tabular-nums').style('margin-top', '3px');
       return bEl;
     })
       .attr('aria-pressed', d => String(d.p === s.period))

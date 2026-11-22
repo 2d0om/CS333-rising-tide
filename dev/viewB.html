@@ -11,7 +11,6 @@
   </style>
 </head>
 <body>
-  <div id="build" style="font: 11px ui-monospace, monospace; color: #64748b; height: 16px"></div>
   <div id="view-b"></div>
   <div id="log">Loading data…</div>
 
@@ -23,10 +22,11 @@
     import { BUILD } from '../src/viewB.js';
 
     const log = document.querySelector('#log');
-    document.querySelector('#build').textContent = `Build: ${BUILD}`;   // if this line is missing or old, you are not running the latest code
+    document.title = `Dev — View B · ${BUILD}`;   // the build shows in the tab's title and the console, not on the page
+    console.info(`Build: ${BUILD}`);
     // same wiring as the public page (index.html); this page adds the build stamp and an event log
     await runViewB(document.querySelector('#view-b'), {
-      chrome: 16 + 22,
+      chrome: 22,
       onEvent: (ev, v) => { if (ev !== 'hover' && ev !== 'budget') log.textContent = `event: ${ev} → ${JSON.stringify(v)}`; }
     });
     log.textContent = 'Ready. Hover, click (select), shift-click (pin), click a neighbourhood to mark it on the chart, click a period, drag the budget bar. Esc clears.';
