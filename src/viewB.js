@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · hover box beside the chart, floor plan stays put, no click-to-period · 2026-11-22';
+export const BUILD = 'View B · bigger title that fills with water as the budget drops · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -262,13 +262,23 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   titleRow.append('div').style('font', `700 10.5px ${theme.font}`).style('letter-spacing', '0.12em')
     .style('text-transform', 'uppercase').style('color', '#ffffff').style('background', theme.depth.deep)
     .style('padding', '3px 9px').style('border-radius', '999px').style('flex', 'none').text('The Sea · 2015–2026');
-  titleRow.append('div').attr('role', 'heading').attr('aria-level', 2)
-    .style('font', `800 23px/1.15 ${theme.font}`).style('letter-spacing', '-0.01em').style('flex', 'none')
+  // The title fills with water: its water level is the share of the counted neighbourhoods under water
+  // right now, so dragging the budget down sinks the question and raising it brings it back up. The water
+  // is a mid sea-blue that stays readable (4:1 on white); the rest is ink. Set in drawHeadline.
+  const TITLE_WATER = '#3d7fb5';
+  const titleEl = titleRow.append('div').attr('role', 'heading').attr('aria-level', 2)
+    .style('font', `800 ${Math.round(Math.max(24, Math.min(34, width / 46)))}px/1.12 ${theme.font}`)
+    .style('letter-spacing', '-0.015em').style('flex', 'none').style('color', theme.ink)
+    .style('background-image', `linear-gradient(to bottom, ${theme.ink} 0 50%, ${TITLE_WATER} 50% 100%)`)
+    .style('background-size', '100% 200%').style('background-position', '0 0%')
+    .style('-webkit-background-clip', 'text').style('background-clip', 'text')
+    .style('-webkit-text-fill-color', 'transparent')
+    .style('transition', 'background-position 0.9s cubic-bezier(.45,.05,.35,1)')
     .text('How much of Dubai can your budget keep above water?');
   // The description, in the map's own colours: the words sand and water look like the map's sand and water
   const SAND_WORD = '#a8803a';
   const sub = titleRow.append('div').style('font', `500 ${theme.size.label}px/1.4 ${theme.font}`)
-    .style('color', theme.depth.deep).style('flex', '1 1 360px').style('min-width', '0');
+    .style('color', theme.depth.deep).style('flex', '1 1 300px').style('min-width', '0');
   const describe = (size, word) => sub.html(`Your budget is the tide line. ` +
     `<strong style="color:${SAND_WORD}">Sand</strong> is where it still buys a typical ${size} m² ${word}; ` +
     `<strong style="color:${theme.depth.deep}">water</strong> is where it no longer does. Drag it and watch the coast move.`);
@@ -858,6 +868,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       foot = `<div style="font-size:${theme.size.small + 0.5}px;color:${theme.quiet}">of the ${C.n} neighbourhoods with enough sales to compare</div>`;
     }
     headLead.html(lead); headNums.html(nums); headFoot.html(foot);
+    const under = C.n ? (C.n - C.k2) / C.n : 0;           // the title's water level
+    titleEl.style('transition', reduceMotion || dragging ? 'none' : 'background-position 0.9s cubic-bezier(.45,.05,.35,1)')
+      .style('background-position', `0 ${(under * 100).toFixed(1)}%`);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
     chartHead.html('The home your budget buys, in m²');
