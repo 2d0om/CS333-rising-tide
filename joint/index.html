@@ -94,14 +94,54 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   opacity: 0; transition: opacity .4s; pointer-events: none; }
 #lead { position: fixed; left: 0; right: 0; margin: 0; text-align: center; font: 600 22px var(--serif); color: var(--foam);
   pointer-events: none; opacity: 0; transition: opacity .6s; }
+#morph { position: fixed; inset: 0; z-index: 2; pointer-events: none; display: none; }
+#morph .clip { position: absolute; overflow: hidden; border-radius: 12px; }
+#morph .paper { position: absolute; inset: 0; opacity: 0; }
+#morph i { position: absolute; left: 0; top: 0; width: 10px; height: 10px; transform-origin: 0 0; will-change: transform, opacity; }
+#morph b { position: absolute; inset: 0; opacity: 0; }
 #boot { position: fixed; inset: var(--bar) 0 0; margin: 0; display: grid; place-items: center; color: var(--mist); font-size: 15px;
   transition: opacity .4s; pointer-events: none; }
 
+
+/* ---------- the first page: the project, what each part is, and who made it (words only) ---------- */
+#front { position: fixed; inset: 0; z-index: 5; overflow: auto; background:
+  radial-gradient(90% 70% at 85% 115%, rgba(23, 80, 124, .55), transparent 60%), var(--night); }
+#front .in { min-height: 100%; max-width: 1240px; margin: 0 auto; padding: clamp(28px, 7vh, 96px) clamp(24px, 5vw, 64px) 22px;
+  display: flex; flex-direction: column; }
+#front h1 { margin: 0; overflow: hidden; font: 600 clamp(64px, 10vw, 136px)/1.02 var(--serif); letter-spacing: -.03em; padding-bottom: .16em; margin-bottom: -.1em; }
+#front h1 span { display: inline-block; }
+#front .line { display: block; width: min(560px, 70%); height: 18px; margin: 6px 0 22px; overflow: visible; }
+#front .line path { fill: none; stroke: #5ea6e4; stroke-width: 2.2; stroke-linecap: round; }
+#front .sub { margin: 0; max-width: 34em; font: 500 clamp(19px, 1.7vw, 24px)/1.4 var(--serif); color: #d7dee6; }
+#front .parts { list-style: none; margin: clamp(32px, 6vh, 64px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+#front .parts li { border-top: 2px solid var(--c); padding-top: 14px; }
+#front .who { display: flex; align-items: baseline; gap: 10px; font-weight: 700; color: var(--c); font-size: 14.5px; }
+#front .who em { font-style: normal; font-weight: 500; color: var(--foam); }
+#front .q { margin: 8px 0 8px; font: 600 19px/1.3 var(--serif); color: var(--foam); }
+#front .what { margin: 0; font-size: 14px; line-height: 1.55; color: var(--mist); }
+#front .go { margin-top: clamp(32px, 6vh, 56px); display: flex; align-items: center; gap: 18px; }
+#front .go button { font: 700 16px var(--sans); color: var(--night); background: var(--foam); padding: 13px 30px; border-radius: 999px;
+  transition: transform .2s, background-color .2s; }
+#front .go button:hover { background: #fff; transform: translateY(-1px); }
+#front .go span { color: var(--mist); font-size: 14px; }
+#front .foot { margin: auto 0 0; padding-top: 28px; color: rgba(143, 164, 185, .75); font-size: 12.5px; }
+@media (max-width: 980px) { #front .parts { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { #front .parts { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 10px 8px; font-size: 14px; } #bar { padding-left: 8px; } }
 @media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave { animation: none; } }
 </style>
 </head>
 <body>
+<section id="front" aria-label="Rising Tide">
+  <div class="in">
+    <h1><span>Rising Tide</span></h1>
+    <svg class="line" viewBox="0 0 560 18" preserveAspectRatio="none" aria-hidden="true"><path id="frontLine" d=""/></svg>
+    <p class="sub">Dubai's property boom, 2015 to 2026, seen from four seats. In our sample, yearly sales grew five times, from about 2,100 to 10,700.</p>
+    <ol class="parts" id="parts"></ol>
+    <div class="go"><button type="button" id="begin">Begin</button><span>or press Enter</span></div>
+    <p class="foot">A CS333 team project. Data: Dubai Land Department transactions, 10% sample, January 2015 to August 2026.</p>
+  </div>
+</section>
 <header id="bar">
   <span class="name">Rising Tide</span>
   <nav id="tabs" aria-label="The four views"><span id="pill"></span></nav>
@@ -113,15 +153,21 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 <p id="lead">Four questions about Dubai's property boom, 2015 to 2026</p>
 
 <script>
-// The four views, in order along the strip. The buyer's view (this repo) opens first.
+// The four views, in order along the strip. The buyer's view (this repo) opens first. The others are copies
+// of the members' pages on this same site (views/README.md), so the page can read their marks and carry
+// them into the next view; "own" is each member's own page.
 const VIEWS = [
-  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4', q: 'Where can my budget still buy?', src: '../', fixed: true },   // one screen: see fit()
-  { key: 'developer', role: 'Developer', colour: '#ef8a4c', q: 'Where is apartment buying concentrated, and where are land plots sold?',
-    src: 'https://urwahsheikha.github.io/cs333-view-c/' },
-  { key: 'planner', role: 'Planner', colour: '#e8656e', q: 'Do sales happen where people live?',
-    src: 'https://babar-nabeel.github.io/Data-Viz-Project/' },
-  { key: 'investor', role: 'Investor', colour: '#46b8a8', q: 'Who is paying, and with what money?',
-    src: 'views/investor/' }                                    // zmashd's view, a copy with the team palette
+  { key: 'buyer', role: 'Buyer', by: 'Adam', colour: '#5ea6e4',
+    what: 'A map where your budget is the sea level. Guess first, then drag the budget and watch neighbourhoods go under water.', q: 'Where can my budget still buy?', src: '../', own: '../', fixed: true },   // one screen: see fit()
+  { key: 'developer', role: 'Developer', by: 'Urwah', colour: '#ef8a4c',
+    what: 'A heatmap of 41 projects by year that re-sorts by peak year, with land-plot sales beside it.', q: 'Where is apartment buying concentrated, and where are land plots sold?',
+    src: 'views/developer/', own: 'https://urwahsheikha.github.io/cs333-view-c/' },
+  { key: 'planner', role: 'Planner', by: 'Nabeel', colour: '#e8656e',
+    what: 'Ribbons from where Dubai\'s residents live to where its flats sell, split by sales or by distance to the metro.', q: 'Do sales happen where people live?',
+    src: 'views/planner/', own: 'https://babar-nabeel.github.io/Data-Viz-Project/' },
+  { key: 'investor', role: 'Investor', by: 'Shahzad', colour: '#46b8a8',
+    what: 'The central bank\'s rate against monthly sales, replayed month by month, with a rate dial and a count of mortgages.', q: 'Who is paying, and with what money?',
+    src: 'views/investor/', own: 'views/investor/' }            // Shahzad's view with the team palette
 ];
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
@@ -195,16 +241,24 @@ function placePill(i, ms = 0) {
 }
 
 // ---------------------------------------------------------------------
-// layout: one card per view, side by side; the strip moves, the cards stay put
+// layout: during the opening the cards lie side by side on one strip; after it they are stacked in the
+// same place, the current one on top, so every view is already painted and ready the moment it is called
 // ---------------------------------------------------------------------
+let stacked = false;
 const xOf = i => -i * (CW + GAP);
 function layout() {
   const W = stage.clientWidth, pad = 10;
   CW = W - 2 * pad; GAP = Math.round(W * .02) + 12;
-  VIEWS.forEach((v, i) => { v.card.style.left = pad + i * (CW + GAP) + 'px'; v.card.style.width = CW + 'px'; if (v.frame) fit(v); });
-  track.style.transform = `translateX(${xOf(cur)}px)`;
+  VIEWS.forEach((v, i) => {
+    v.card.style.left = (stacked ? pad : pad + i * (CW + GAP)) + 'px'; v.card.style.width = CW + 'px';
+    v.card.style.zIndex = stacked ? (i === cur ? 2 : 1) : '';
+    if (v.frame) fit(v);
+  });
+  track.style.transform = stacked ? 'none' : `translateX(${xOf(cur)}px)`;
   placePill(cur);
 }
+const setTop = i => VIEWS.forEach((v, k) => v.card.style.zIndex = k === i ? 2 : 1);
+
 // The buyer's view fills one screen and lays itself out once, so it is laid out for this screen in full
 // screen and only scaled to fit the card: exact in full screen, the same picture a little smaller in a
 // window, and nothing ever has to be redrawn when the window changes. The other views reflow by themselves.
@@ -236,7 +290,7 @@ function load(v) {
       try { if (v.frame.contentWindow.__viewB) break; } catch (e) { break; }
       await new Promise(r => setTimeout(r, 100));
     }
-    v.ready = true; res();
+    v.ready = true; watch(v); res();
   }, { once: true }));
   v.frame.src = v.src;
   return v.loaded;
@@ -251,35 +305,122 @@ async function preloadRest() {          // the others load one after another whi
 }
 
 // ---------------------------------------------------------------------
-// moving: pull back, slide along the strip, settle. One continuous motion; longer jumps pull back further.
+// moving between views: the marks of the view you leave lift off the page as small tokens, fly and
+// recolour into the marks of the view you open, and the new view appears under them. Only transform and
+// opacity move, so it stays smooth while the page works. A view not loaded yet simply fades in.
 // ---------------------------------------------------------------------
+const MORPH_MAX = 240;
+// the visible marks of a view: SVG shapes on screen inside it, with their colour, placed on its card
+function readMarks(v) {
+  let doc, win;
+  try { doc = v.frame.contentDocument; win = v.frame.contentWindow; } catch (e) { return null; }
+  if (!doc || !doc.body) return null;
+  const fr = v.frame.getBoundingClientRect(), cr = v.card.getBoundingClientRect(), k = fr.width / v.frame.offsetWidth;
+  const ox = fr.left - cr.left, oy = fr.top - cr.top, vw = win.innerWidth, vh = win.innerHeight, out = [];
+  const seen = new Map(), alphaOf = el => {               // opacity of an element's groups, remembered per group
+    if (!el || el === doc.body || el.tagName === 'svg') return 1;
+    if (seen.has(el)) return seen.get(el);
+    const a = +win.getComputedStyle(el).opacity * alphaOf(el.parentElement); seen.set(el, a); return a;
+  };
+  for (const el of doc.querySelectorAll('svg path, svg rect, svg circle, svg line, svg polygon, svg ellipse')) {
+    if (el.closest('defs, clipPath, mask, marker, pattern')) continue;
+    const r = el.getBoundingClientRect();
+    if ((r.width < 2 && r.height < 2) || r.right < 0 || r.bottom < 0 || r.left > vw || r.top > vh) continue;
+    const area = r.width * r.height;                                          // panels and backgrounds are boxes; ribbons and
+    if (area > vw * vh * (el.tagName === 'rect' ? .06 : .5)) continue;        // map shapes can be large and still be marks
+    const cs = win.getComputedStyle(el);
+    if (cs.visibility !== 'visible') continue;
+    let col = cs.fill, op = +cs.fillOpacity;
+    if (!col || col === 'none' || col.startsWith('url') || op < .05 || /, 0\)$/.test(col)) { col = cs.stroke; op = +cs.strokeOpacity;
+      if (!col || col === 'none' || col.startsWith('url') || op < .05 || /, 0\)$/.test(col) || parseFloat(cs.strokeWidth) < .8) continue; }
+    const c = col.match(/[\d.]+/g).map(Number);
+    if (c[0] > 232 && c[1] > 232 && c[2] > 232) continue;                     // white halos and paper
+    const a = op * +cs.opacity * alphaOf(el.parentElement);
+    if (a < .08) continue;
+    const w = r.width * k, h = r.height * k, small = w <= 36 && h <= 36;
+    const t = small ? 0 : Math.max(6, Math.min(18, Math.sqrt(Math.min(w * h, 2500)) * .42));
+    out.push({ x: ox + (r.left + r.width / 2) * k, y: oy + (r.top + r.height / 2) * k, w: small ? Math.max(3, w) : t, h: small ? Math.max(3, h) : t,
+      col, a: Math.min(1, a), round: el.tagName === 'circle' || el.tagName === 'ellipse' || (!small && el.tagName === 'path') });
+  }
+  // a fixed walk through the page (rows, back and forth) so neighbours fly to neighbours
+  out.sort((p, q) => { const rp = Math.round(p.y / 36), rq = Math.round(q.y / 36); return rp - rq || (rp % 2 ? q.x - p.x : p.x - q.x); });
+  if (out.length > MORPH_MAX) { const step = out.length / MORPH_MAX; return Array.from({ length: MORPH_MAX }, (_, i) => out[Math.floor(i * step)]); }
+  return out;
+}
+// marks are kept up to date in the background: whenever a view changes (it draws, animates, the reader
+// clicks or scrolls in it) its marks are read again once it has been still for a moment, in idle time,
+// so a switch almost never has to read anything
+const idle = window.requestIdleCallback || (f => setTimeout(f, 1));
+function watch(v) {
+  let t = null;
+  const later = () => { v.marks = null; clearTimeout(t); t = setTimeout(() => idle(() => { if (!v.marks) v.marks = readMarks(v); }), 700); };
+  try {
+    const w = v.frame.contentWindow;
+    new MutationObserver(later).observe(v.frame.contentDocument.body, { subtree: true, childList: true, attributes: true });
+    ['scroll', 'wheel', 'resize'].forEach(e => w.addEventListener(e, later, { capture: true, passive: true }));
+  } catch (e) {}
+  later();
+}
+const marksFor = (v, fresh) => (fresh || !v.marks) ? (v.marks = readMarks(v)) : v.marks;
+const bgOf = v => { try { const b = v.frame.contentWindow.getComputedStyle(v.frame.contentDocument.body).backgroundColor; return /, 0\)$/.test(b) ? '#fff' : b; } catch (e) { return '#fff'; } };
+
+const fx = document.createElement('div'); fx.id = 'morph'; document.body.appendChild(fx);
+async function morph(from, to) {
+  const A = VIEWS[from], B = VIEWS[to];
+  const P = marksFor(A, false), Q = marksFor(B, false);                // re-read only if the reader changed the view
+  if (!P || !Q || P.length < 8 || Q.length < 8) return false;
+  const card = A.card.getBoundingClientRect(), n = Math.max(P.length, Q.length), pick = (L, i) => L[Math.floor(i * L.length / n)];
+  fx.innerHTML = '';
+  const clip = document.createElement('div'), paper = document.createElement('div');
+  clip.className = 'clip'; paper.className = 'paper';
+  Object.assign(clip.style, { left: card.left + 'px', top: card.top + 'px', width: card.width + 'px', height: card.height + 'px' });
+  paper.style.background = bgOf(A);
+  clip.appendChild(paper);
+  const base = 10, D = 760, ease = 'cubic-bezier(.65,0,.35,1)', toks = [];
+  const pos = m => `translate(${m.x - m.w / 2}px, ${m.y - m.h / 2}px) scale(${m.w / base}, ${m.h / base})`;
+  for (let i = 0; i < n; i++) {
+    const p = pick(P, i), q = pick(Q, i), t = document.createElement('i'), u = document.createElement('b');
+    t.style.background = p.col; t.style.borderRadius = p.round ? '50%' : '18%'; t.style.transform = pos(p); t.style.opacity = p.a;
+    u.style.background = q.col; u.style.borderRadius = q.round ? '50%' : '18%';
+    t.appendChild(u); clip.appendChild(t); toks.push({ t, u, p, q, delay: (i / n) * 160 });
+  }
+  fx.appendChild(clip); fx.style.display = 'block';
+  // 1. the page fades away and leaves its marks, and the marks set off; every movement is handed to the
+  // compositor at once, so nothing the page does next can hold them up
+  const paperIn = paper.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 170, easing: 'ease-out', fill: 'forwards' });
+  const flights = toks.map(k => {
+    k.u.animate([{ opacity: 0 }, { opacity: 1 }], { duration: D * .7, delay: 150 + k.delay + D * .15, easing: 'ease-in-out', fill: 'forwards' });
+    return k.t.animate([{ transform: pos(k.p), opacity: k.p.a }, { transform: pos(k.q), opacity: k.q.a }], { duration: D, delay: 150 + k.delay, easing: ease, fill: 'forwards' });
+  });
+  // 2. under the paper, the new view comes to the top; 3. the marks land on its marks
+  await paperIn.finished;
+  setTop(to); paper.style.background = bgOf(B);
+  await Promise.all(flights.map(a => a.finished));
+  // 4. the new view appears exactly under them
+  await Promise.all([paper.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: 'ease-in', fill: 'forwards' }).finished,
+    clip.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 340, delay: 60, easing: 'ease-in', fill: 'forwards' }).finished]);
+  fx.style.display = 'none'; fx.innerHTML = '';
+  return true;
+}
+
 async function go(i, { push = true } = {}) {
   i = (i + VIEWS.length) % VIEWS.length;
   if (opening) return opening(i);
   if (busy) { queued = i; return; }
   if (i === cur) return;
   busy = true;
-  const from = cur, v = VIEWS[i], d = Math.abs(i - from);
+  const from = cur, v = VIEWS[i];
   if (push) history.pushState(null, '', '#' + v.key);
   if (!v.frame) { v.veil.classList.remove('off'); v.shown = false; load(v); }                        // not loaded yet (rare)
   else if (v.ready) { v.shown = true; v.veil.classList.add('off'); }                                  // loaded already: no wait
-  const ms = reduce ? 480 : 820 + 160 * (d - 1), S = 1 - .07 - .035 * (d - 1);
-  placePill(i, ms);
-  alone.href = new URL(v.src, location.href).href;
+  alone.href = new URL(v.own, location.href).href;
+  const morphing = !reduce && VIEWS[from].ready && v.ready;
+  placePill(i, morphing ? 1150 : 380);
   cur = i;
-  if (reduce) {                       // reduced motion: a quick cross-fade instead of the slide
-    const out = scaler.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
-    await out.finished;
-    track.style.transform = `translateX(${xOf(i)}px)`;
-    const inn = scaler.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280 }); out.cancel();
-    await inn.finished;
-  } else {
-    track.style.transform = `translateX(${xOf(i)}px)`;
-    const a1 = track.animate([{ transform: `translateX(${xOf(from)}px)` }, { transform: `translateX(${xOf(i)}px)` }],
-      { duration: ms, easing: 'cubic-bezier(.65,0,.35,1)' });
-    const a2 = scaler.animate([{ transform: 'scale(1)' }, { transform: `scale(${S})`, offset: .45 }, { transform: 'scale(1)' }],
-      { duration: ms, easing: 'ease-in-out' });
-    await Promise.all([a1.finished, a2.finished]);
+  if (!(morphing && await morph(from, i))) {                                // a plain cross-fade
+    v.card.style.opacity = 0; setTop(i);
+    await v.card.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' }).finished;
+    v.card.style.opacity = '';
   }
   if (!v.shown) reveal(v);
   busy = false;
@@ -287,7 +428,7 @@ async function go(i, { push = true } = {}) {
 }
 
 addEventListener('keydown', e => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || $('front')) return;          // the first page has its own keys
   if (document.activeElement && document.activeElement.classList.contains('tab')) document.activeElement.blur();   // the pill shows where you are
   if (/^[1-4]$/.test(e.key)) go(+e.key - 1);
   else if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(cur + 1); }
@@ -318,7 +459,7 @@ async function intro(first = 0) {
   track.classList.add('intro'); scaler.style.setProperty('--s', s0);
   scaler.style.transform = `scale(${s0})`; track.style.transform = `translateX(${x0}px)`;
   pill.style.opacity = 0;
-  load(VIEWS[first]);                                                 // the first view draws itself under its card
+  if (!VIEWS[first].frame) load(VIEWS[first]);                        // the first view draws itself under its card
   const lead = $('lead');
   lead.style.top = (stage.getBoundingClientRect().top + H() / 2 - stage.clientHeight / 2 * s0 - 58) + 'px';
   setTimeout(() => { if (opening) lead.style.opacity = 1; }, 900);
@@ -345,7 +486,7 @@ async function intro(first = 0) {
   opening = null; removeEventListener('keydown', onKey); VIEWS.forEach(x => x.card.onclick = null);
   cur = target; placePill(target, 1150);
   if (target) history.replaceState(null, '', '#' + v.key);
-  alone.href = new URL(v.src, location.href).href;
+  alone.href = new URL(v.own, location.href).href;
   // the strip jumps to its final place at once; the camera starts where the overview was and closes in on
   // the chosen card, which grows and drifts to the middle while the others slide away past the edges
   const ease = 'cubic-bezier(.7,0,.18,1)', xEnd = xOf(target);
@@ -367,9 +508,42 @@ async function intro(first = 0) {
     v.veil.style.transition = ''; track.classList.remove('intro');
   }
   v.shown = true;
-  if (relayout) { relayout = false; layout(); }
+  stacked = true; relayout = false; layout();                        // from now on the cards wait stacked, ready
 }
 const H = () => stage.clientHeight;
+
+// ---------------------------------------------------------------------
+// the first page: the title rises out of its waterline, the four parts follow. Begin (or Enter, or a number)
+// lifts it away and the opening deals the cards. The buyer's view is already loading behind it.
+// ---------------------------------------------------------------------
+function front() {
+  const el = $('front'), list = $('parts');
+  list.innerHTML = VIEWS.map((v, i) => `<li style="--c:${v.colour}"><div class="who">${i + 1}&nbsp; ${v.role} <em>${v.by}</em></div>
+    <p class="q">${v.q}</p><p class="what">${v.what}</p></li>`).join('');
+  const line = $('frontLine');
+  line.setAttribute('d', (() => { let d = 'M0 9'; for (let i = 0; i < 8; i++) d += ` Q${i * 70 + 17.5} 3 ${i * 70 + 35} 9 T${(i + 1) * 70} 9`; return d; })());
+  if (!reduce) {
+    const ease = 'cubic-bezier(.2,.7,.2,1)';
+    el.querySelector('h1 span').animate([{ transform: 'translateY(105%)' }, { transform: 'none' }], { duration: 1000, easing: ease, delay: 150, fill: 'backwards' });
+    const L = line.getTotalLength(); line.style.strokeDasharray = L;
+    line.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: 1300, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'backwards' });
+    [el.querySelector('.sub'), ...list.children, el.querySelector('.go'), el.querySelector('.foot')].forEach((n, i) =>
+      n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 650, delay: 700 + i * 110, easing: ease, fill: 'backwards' }));
+  }
+  return new Promise(res => {
+    let done = false;
+    const begin = i => { if (done) return; done = true; removeEventListener('keydown', key); res(i); };
+    const key = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(0); } else if (/^[1-4]$/.test(e.key)) begin(+e.key - 1); };
+    addEventListener('keydown', key);
+    $('begin').addEventListener('click', () => begin(0));
+  });
+}
+async function leaveFront() {
+  const el = $('front');
+  if (!reduce) await el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-6%)', opacity: 0 }],
+    { duration: 520, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).finished;
+  el.remove();
+}
 
 // ---------------------------------------------------------------------
 // start: the buyer's view (or the one named in the link) rises into place once it is drawn
@@ -379,6 +553,11 @@ const H = () => stage.clientHeight;
   const k = VIEWS.findIndex(v => '#' + v.key === location.hash);
   cur = k < 0 ? 0 : k;
   layout();
+  if (k < 0) {                                       // a plain visit starts on the first page; a link to a view skips it
+    load(VIEWS[0]);
+    cur = await front();
+    await leaveFront();
+  } else $('front').remove();
   await intro(cur);
   setTimeout(preloadRest, 300);
 })();
