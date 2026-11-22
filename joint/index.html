@@ -13,7 +13,7 @@
    (the Investor view is a copy with the team palette). */
 :root {
   --night: #06121f; --bar-bg: #081b2e; --foam: #f2ead9; --mist: #8fa4b9; --line: rgba(242, 234, 217, .12);
-  --bar: 52px;
+  --bar: 62px;
   --serif: 'Source Serif 4', Georgia, serif; --sans: 'DM Sans', system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
@@ -25,14 +25,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #bar { position: fixed; left: 0; right: 0; top: 0; height: var(--bar); display: flex; align-items: center; gap: 22px;
   padding: 0 12px 0 20px; background: var(--bar-bg); border-bottom: 1px solid var(--line); z-index: 3; }
 .name { font: 600 17px var(--serif); white-space: nowrap; }
-#tabs { position: relative; display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, .04); }
-#pill { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 7px; background: var(--pc, transparent);
+#tabs { position: relative; flex: 1; display: flex; gap: 4px; padding: 4px; border-radius: 11px; background: rgba(255, 255, 255, .04); }
+#pill { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 8px; background: var(--pc, transparent);
   box-shadow: inset 0 0 0 1px var(--pb, transparent); pointer-events: none; }
-.tab { position: relative; display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-radius: 7px; color: var(--mist);
+.tab { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 16px; border-radius: 8px; font-size: 15.5px; color: var(--mist);
   font-weight: 500; transition: color .3s; white-space: nowrap; }
-.tab i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); opacity: .8; }
+.tab i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); opacity: .8; }
 .tab:hover, .tab[aria-current="page"] { color: var(--foam); }
-.tab kbd { font: 500 11px var(--sans); color: rgba(143, 164, 185, .65); }
+.tab kbd { font: 500 11.5px var(--sans); color: rgba(143, 164, 185, .65); }
 .tab:focus-visible { outline: 1px solid rgba(242, 234, 217, .45); outline-offset: -1px; }
 #alone { margin-left: auto; color: var(--mist); text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: 8px; white-space: nowrap; }
 #alone:hover { color: var(--foam); background: rgba(255, 255, 255, .05); }
@@ -97,7 +97,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #boot { position: fixed; inset: var(--bar) 0 0; margin: 0; display: grid; place-items: center; color: var(--mist); font-size: 15px;
   transition: opacity .4s; pointer-events: none; }
 
-@media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 7px 10px; } #bar { padding-left: 8px; } }
+@media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 10px 8px; font-size: 14px; } #bar { padding-left: 8px; } }
 @media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave { animation: none; } }
 </style>
 </head>
@@ -208,7 +208,7 @@ function layout() {
 // The buyer's view fills one screen and lays itself out once, so it is laid out for this screen in full
 // screen and only scaled to fit the card: exact in full screen, the same picture a little smaller in a
 // window, and nothing ever has to be redrawn when the window changes. The other views reflow by themselves.
-const BAR = 52;                    // = --bar
+const BAR = 62;                    // = --bar
 let design = null;
 function fit(v) {
   const W = CW, H = v.card.clientHeight, el = v.frame;
