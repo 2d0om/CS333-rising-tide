@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · rings line chart: the home your budget buys, by distance from Downtown · 2026-11-22';
+export const BUILD = 'View B · price-group lines in three colours, key under the chart · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -154,27 +154,28 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   });
   const stations = data.metro.features.map(f => ({ coords: f.geometry.coordinates }));
 
-  // ---------- by year, and by distance from Downtown (the line chart) ----------
-  // Rings: the counted neighbourhoods (20+ flat sales in every period, all homes) cut into equal thirds by
-  // the distance from their centre to Downtown Dubai (the Burj Khalifa). A fixed cut, so a ring keeps its
-  // members whatever the filters. Years: 2015 to 2026; the window ends on 31 Aug 2026, so 2026 is partial.
-  const DOWNTOWN = [55.2744, 25.1972];
+  // ---------- by year, by how pricey an area was (the line chart) ----------
+  // Three groups: the counted neighbourhoods (20+ flat sales in every period, all homes) cut into equal
+  // thirds by their typical price per m² in 2015–17: the cheapest, mid-priced and priciest areas. A fixed
+  // cut, so a group keeps its members whatever the filters. Years 2015 to 2026 (the window ends on 31 Aug
+  // 2026, so 2026 is partial). Each year pools that year's sales with the year before and after (a 3-year
+  // window): one year of the 10% sample is too thin in the smaller neighbourhoods.
   const YEARS = d3.range(R.PERIODS[PERIOD_KEYS[0]][0], R.PERIODS[PERIOD_KEYS[PERIOD_KEYS.length - 1]][1] + 1);
   const PARTIAL_YEAR = 2026;
-  const YEAR_MIN = 10, RING_MIN = 5;      // a neighbourhood counts in a year with 10+ sales; a ring needs 5 of them
-  const kmTo = c => byComm.has(c) ? d3.geoDistance(d3.geoCentroid(byComm.get(c)), DOWNTOWN) * 6371 : Infinity;
+  const YEAR_MIN = 10, RING_MIN = 5;      // a neighbourhood counts with 10+ sales in the window; a group needs 5 of them
   const ringBase = { mode: 'all', homeType: 'apartment', money: 'nominal', dropExtremes: false, budget: 1e6, size: 80,
     period: PERIOD_KEYS[PERIOD_KEYS.length - 1], thenPeriod: PERIOD_KEYS[0] };
-  const byDist = reach(ringBase).set.filter(c => Number.isFinite(kmTo(c))).sort((a, b) => kmTo(a) - kmTo(b));
-  const third = Math.ceil(byDist.length / 3);
-  const RINGS = ['Inner', 'Middle', 'Outer'].map((name, i) => ({ key: name.toLowerCase(), name,
-    members: byDist.slice(i * third, (i + 1) * third) })).filter(r => r.members.length);
-  const cut = i => Math.round((kmTo(RINGS[i].members[RINGS[i].members.length - 1]) + kmTo(RINGS[i + 1].members[0])) / 2);
-  RINGS.forEach((r, i) => {
-    r.km = RINGS.length < 3 ? '' : i === 0 ? `under ${cut(0)} km` : i === 1 ? `${cut(0)}–${cut(1)} km` : `over ${cut(1)} km`;
-  });
+  const base0 = pricesBy(PERIOD_KEYS[0], ringBase);
+  const byPrice = reach(ringBase).set.filter(c => (base0.get(c) || []).length)
+    .sort((a, b) => d3.median(base0.get(a)) - d3.median(base0.get(b)));
+  const third = Math.ceil(byPrice.length / 3);
+  const RINGS = [
+    { key: 'cheap', name: 'Cheapest', desc: 'the cheapest third of areas in 2015–17' },
+    { key: 'mid', name: 'Mid-priced', desc: 'the middle third by price in 2015–17' },
+    { key: 'prime', name: 'Priciest', desc: 'the priciest third of areas in 2015–17' }
+  ].map((g, i) => ({ ...g, members: byPrice.slice(i * third, (i + 1) * third) })).filter(r => r.members.length);
   const yearCache = new Map();
-  function yearData(s) {                  // { byYC: year -> comm -> sorted prices, rings: per ring, per year, m² per AED }
+  function yearData(s) {                  // { pooled(c, y): prices in the 3-year window, rings: per group, per year, m² per AED }
     const key = [s.mode, s.homeType, s.money, s.dropExtremes].join('|');
     if (yearCache.has(key)) return yearCache.get(key);
     const byYC = new Map();
@@ -187,7 +188,17 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       let a = m.get(comm); if (!a) m.set(comm, (a = []));
       a.push(R.priceIn(r, s.money));
     }
-    // A ring's line = its 2015–17 level (the middle neighbourhood's m² per AED) × the median of its
+    const memo = new Map();
+    const pooled = (c, y) => {           // { n, med } of the sales in years y-1, y, y+1
+      const k = c + '|' + y;
+      if (!memo.has(k)) {
+        let a = [];
+        for (let t = y - 1; t <= y + 1; t++) { const m = byYC.get(t), x = m && m.get(c); if (x) a = a.concat(x); }
+        memo.set(k, { n: a.length, med: a.length ? d3.median(a) : null });
+      }
+      return memo.get(k);
+    };
+    // A group's line = its 2015–17 level (the middle neighbourhood's m² per AED) × the median of its
     // neighbourhoods' own price change since 2015–17. Each neighbourhood is compared only with itself, so
     // one dropping in or out of a year's sample cannot make the line jump.
     const base = pricesBy(PERIOD_KEYS[0], s);
@@ -195,19 +206,19 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       const p0 = new Map(ring.members.filter(c => (base.get(c) || []).length >= R.MIN_SALES).map(c => [c, d3.median(base.get(c))]));
       const level = d3.median([...p0.values()], v => 1 / v);
       const ys = YEARS.map(y => {
-        const m = byYC.get(y), rel = [];
-        for (const [c, v0] of p0) { const a = m && m.get(c); if (a && a.length >= YEAR_MIN) rel.push(v0 / d3.median(a)); }
+        const rel = [];
+        for (const [c, v0] of p0) { const w = pooled(c, y); if (w.n >= YEAR_MIN) rel.push(v0 / w.med); }
         return { y, f: rel.length >= RING_MIN && level ? level * d3.median(rel) : null, n: rel.length };
       });
       return { ...ring, ys };
     });
-    const out = { byYC, rings };
+    const out = { pooled, rings };
     yearCache.set(key, out);
     return out;
   }
-  const commYearly = (s, c) => {         // one neighbourhood, m² per AED each year it has 10+ sales
-    const { byYC } = yearData(s);
-    return YEARS.map(y => { const a = byYC.get(y) && byYC.get(y).get(c); return { y, f: a && a.length >= YEAR_MIN ? 1 / d3.median(a) : null }; });
+  const commYearly = (s, c) => {         // one neighbourhood, m² per AED in each 3-year window with 10+ sales
+    const { pooled } = yearData(s);
+    return YEARS.map(y => { const w = pooled(c, y); return { y, f: w.n >= YEAR_MIN ? 1 / w.med : null }; });
   };
 
   // ---------- encoding ----------
@@ -315,9 +326,22 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .style('margin-bottom', '-6px').style('min-height', '14px').style('white-space', 'nowrap').style('overflow', 'hidden');
   const chips = panel.append('div').style('display', 'grid').style('grid-template-columns', 'repeat(4, 1fr)').style('gap', '6px')
     .style('min-height', '48px');
-  // 3. Reach curves
+  // 3. The line chart, and its key underneath. Three clearly different colours for the three price groups
+  //    (none of them sand, sea or coral, which already mean something on the map); coral, dashed, is the
+  //    neighbourhood you clicked.
   const chartHead = panel.append('div').style('font', `600 ${theme.size.small + 0.5}px ${theme.font}`).style('min-height', '16px');
   const chartBox = panel.append('div').style('margin-top', '-6px');
+  const RING_COL = ['#2e9e5b', '#7b61c9', '#1f3a68'], RING_TEXT = ['#24804a', '#6a50b8', '#1f3a68'];
+  const sw = (css) => `<span style="display:inline-block;vertical-align:middle;margin-right:5px;${css}"></span>`;
+  const keyLine = c => sw(`width:16px;height:0;border-top:3px solid ${c};border-radius:2px`);
+  panel.append('div').style('margin-top', '-8px').style('font', `500 11px/1.55 ${theme.font}`).style('color', theme.quiet)
+    .html(`<div style="display:flex;flex-wrap:wrap;gap:0 12px;color:${theme.ink}">` +
+      `<span>${keyLine(RING_COL[0])}Cheapest</span><span>${keyLine(RING_COL[1])}Mid-priced</span>` +
+      `<span>${keyLine(RING_COL[2])}Priciest <span style="color:${theme.quiet}">third of areas, by 2015–17 price</span></span></div>` +
+      `<div style="display:flex;flex-wrap:wrap;gap:0 12px">` +
+      `<span>${sw(`width:14px;height:9px;background:${theme.depth.shallow};opacity:.45;border-top:2px solid ${theme.depth.deep}`)}under a typical flat</span>` +
+      `<span>${sw(`width:16px;height:0;border-top:2.5px dashed ${theme.accent}`)}area you clicked</span>` +
+      `<span>3-year windows · ’26* Jan–Aug</span></div>`);
 
   // ---------- map: data underneath, moving water and fog in the middle, names and lines on top ----------
   const legendH = 0;            // the key is a small box in the bottom-right corner, not a band
@@ -515,8 +539,6 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const yx = d3.scaleLinear().domain([YEARS[0], YEARS[YEARS.length - 1]]).range([cm.l + 8, CW - cm.r - 8]);
   const ym = d3.scaleLinear().range([plotB, cm.t]);
   const halfStep = (yx(YEARS[0] + 1) - yx(YEARS[0])) / 2;
-  // dark = near Downtown, light = far out (an order, so lightness carries it); coral stays for the clicked place
-  const RING_COL = [theme.ink, '#4a78a8', '#a6bbd1'], RING_TEXT = [theme.ink, '#3f6a96', '#6a86a3'];
   const gGrid = chart.append('g').attr('pointer-events', 'none');
   const periodBand = chart.append('rect').attr('y', cm.t).attr('height', plotB - cm.t).attr('fill', theme.ink)
     .attr('fill-opacity', 0.05).attr('pointer-events', 'none');
@@ -531,6 +553,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `600 10.5px ${theme.font}`).attr('pointer-events', 'none');
   const gRingLines = chart.append('g').attr('pointer-events', 'none');
   const selPath = chart.append('path').attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 2.2)
+    .attr('stroke-dasharray', '6 3')
     .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
   const gUnder = chart.append('g').attr('pointer-events', 'none');      // where a ring went under, and when
   const gPeak = chart.append('g').attr('pointer-events', 'none');       // the one peak worth naming
@@ -679,7 +702,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const jumpOn = (sc, node) => event => { if (cur) ev.emit('budget', roundBudget(budgetAt(sc, d3.pointer(event, node)[0]))); };
   sHit.call(dragOn(barX, ssvg.node())).on('click', jumpOn(barX, ssvg.node()));
   // The line chart: hover a year to read the nearest line there (the floor plan shows that home); hover a
-  // ring (or its name) to outline its neighbourhoods on the map; click a year to show its period on the map.
+  // line (or its value) to outline its group's neighbourhoods on the map; click a year to show its period.
   const gRingMarks = top.append('g').attr('pointer-events', 'none');
   function outlineRing(i) {
     const members = i == null ? [] : RINGS[i].members.filter(c => byComm.has(c));
@@ -699,12 +722,12 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     if (!best) { gHover.attr('opacity', 0); return; }
     hoverRule.attr('x1', yx(y)).attr('x2', yx(y));
     hoverDot.attr('cx', yx(y)).attr('cy', ym(best.d.v)).attr('fill', best.L.col);
-    const txt = `${best.L.label}, ${y}${y === PARTIAL_YEAR ? ' (Jan–Aug)' : ''}: ${Math.round(best.d.v)} m²`;
+    const txt = `${best.L.label}, around ${y}: ${Math.round(best.d.v)} m²`;
     const w = textW(txt, 11, 700);
     hoverLab.attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, yx(y) - w / 2))).text(txt);
     gHover.attr('opacity', 1); gPeak.attr('opacity', 0);
     outlineRing(best.L.ring);
-    renderPlan({ a: best.d.v, aText: `in ${y}${y === PARTIAL_YEAR ? '*' : ''}`, z: best.L.now, zText: 'now', where: best.L.where });
+    renderPlan({ a: best.d.v, aText: `around ${y}`, z: best.L.now, zText: 'now', where: best.L.where });
   })
     .on('mouseleave', () => {
       gHover.attr('opacity', 0); gPeak.attr('opacity', 1); outlineRing(null);
@@ -817,7 +840,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     headLead.html(lead); headNums.html(nums); headFoot.html(foot);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
-    chartHead.html(`The home your budget buys, by distance from Downtown <span style="font-weight:400;color:${theme.quiet}">· hover a line</span>`);
+    chartHead.html(`The home your budget buys, year by year <span style="font-weight:400;color:${theme.quiet}">· hover a line</span>`);
   }
 
   function drawLegend(s, same) {
@@ -936,9 +959,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     drawRings(cur, v, t);
   }
 
-  // The line chart: the home your budget buys each year (m² = budget × m² per AED), one line per ring and a
-  // coral line for the clicked neighbourhood. The waterline is the typical home (80 m²): below it, that
-  // ring's typical neighbourhood is water on the map. Marked live from the data: where each ring went under
+  // The line chart: the home your budget buys each year (m² = budget × m² per AED), one line per price group
+  // (cheapest, mid-priced, priciest areas as priced in 2015–17) and a dashed coral line for the clicked
+  // neighbourhood. The waterline is the typical home (80 m²): below it, that group's typical neighbourhood
+  // is water on the map. Marked live from the data: where each ring went under
   // for good, and the one peak worth naming.
   let ringView = null;
   function drawRings(s, B, t) {
@@ -951,8 +975,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     };
     const lines = rings.map((r, i) => {
       const pts = r.ys.map(d => ({ y: d.y, v: d.f == null ? null : d.f * B }));
-      return { key: r.key, name: r.name, label: `${r.name} ring${r.km ? ` (${r.km})` : ''}`, col: RING_COL[i], text: RING_TEXT[i],
-        ring: i, pts, now: periodVal(pts), where: `${r.name.toLowerCase()} ring` };
+      return { key: r.key, name: `${r.name} areas`, label: `${r.name} areas`, col: RING_COL[i], text: RING_TEXT[i],
+        ring: i, pts, now: periodVal(pts), where: `in ${r.name.toLowerCase()} areas` };
     });
     const c = selectedOf(s);
     let sel = null;
@@ -978,8 +1002,15 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     go(sandBg).attr('y', cm.t).attr('height', Math.max(0, wy - cm.t));
     go(seaBg).attr('y', wy).attr('height', Math.max(0, plotB - wy));
     go(waterLine).attr('y1', wy).attr('y2', wy);
-    waterLab.text(`${size} m²: a typical flat`);
-    go(waterLab).attr('y', wy - 5);
+    // the waterline's label sits at the left unless a line runs right through it there; then at the right
+    // (tries above the line, left / right / middle, then just under it)
+    const busy = (years, ty) => all.some(L => L.pts.some(d => years.includes(d.y) && d.v != null && Math.abs(ym(d.v) - (ty - 4)) < 10));
+    const spans = [{ ys: YEARS.slice(0, 4), x: cm.l + 5, a: 'start' }, { ys: YEARS.slice(-4), x: CW - cm.r - 5, a: 'end' },
+      { ys: YEARS.slice(4, 8), x: yx(YEARS[4]), a: 'start' }];
+    const spots = [...spans.map(q => ({ ...q, ty: wy - 5 })), ...spans.map(q => ({ ...q, ty: wy + 14 }))];
+    const spot = spots.find(q => !busy(q.ys, q.ty)) || spots[0];
+    waterLab.text(`${size} m²: a typical flat`).attr('x', spot.x).attr('text-anchor', spot.a);
+    go(waterLab).attr('y', spot.ty);
 
     gRingLines.selectAll('path').data(lines, L => L.key).join('path').attr('fill', 'none').attr('stroke-linejoin', 'round')
       .attr('stroke-linecap', 'round').attr('stroke', L => L.col).attr('stroke-width', 2.5)
@@ -1001,13 +1032,17 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     });
     gUnder.selectAll('circle').data(unders, d => d.L.key).join('circle').attr('r', 4).attr('stroke', '#ffffff')
       .attr('stroke-width', 1.5).attr('fill', d => d.L.col).attr('cx', d => d.x).attr('cy', wy);
-    const byYear = d3.groups(unders, d => d.year).map(([year, us]) => ({ year, x: d3.mean(us, d => d.x) })).sort((a, b) => a.x - b.x);
     const below = wy + 30 < plotB;
-    gUnder.selectAll('text').data(byYear, d => d.year).join('text').attr('text-anchor', 'middle').attr('fill', theme.depth.deep)
-      .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `700 10.5px ${theme.font}`)
-      .text(d => `under in ${d.year}`)
-      .attr('x', d => Math.max(cm.l + 34, Math.min(CW - cm.r - 34, d.x)))
-      .attr('y', (d, i) => below ? wy + 15 + (i % 2) * 13 : wy - 9 - (i % 2) * 13);
+    // one label, "under in 2025 · 2026", each year in the colour of the line that went under then
+    gUnder.selectAll('text').remove();
+    if (unders.length) {
+      const us = unders.slice().sort((a, b) => a.x - b.x), parts = ['under in ', ...us.flatMap((u, i) => i ? [' · ', u] : [u])];
+      const txt = parts.map(q => typeof q === 'string' ? q : q.year).join(''), w = textW(txt, 10.5, 700);
+      const xr = Math.min(CW - cm.r - 2, Math.max(cm.l + w, us[us.length - 1].x + 30));
+      const t = gUnder.append('text').attr('x', xr).attr('y', below ? wy + 15 : wy - 9).attr('text-anchor', 'end')
+        .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `700 10.5px ${theme.font}`);
+      parts.forEach(q => t.append('tspan').attr('fill', typeof q === 'string' ? theme.ink : q.L.text).text(typeof q === 'string' ? q : q.year));
+    }
 
     // the one peak worth naming: a ring that rose 10%+ above its start, then lost a quarter or more
     let peak = null;
@@ -1021,7 +1056,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     });
     gPeak.selectAll('*').remove();
     if (peak) {
-      const px = yx(peak.d.y), py = ym(peak.d.v), txt = `${peak.L.name}, ${peak.d.y}: ${Math.round(peak.d.v)} m²`, w = textW(txt, 11, 700);
+      const px = yx(peak.d.y), py = ym(peak.d.v), txt = `around ${peak.d.y}: ${Math.round(peak.d.v)} m²`, w = textW(txt, 11, 700);
       gPeak.append('circle').attr('cx', px).attr('cy', py).attr('r', 4).attr('fill', peak.L.col).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
       gPeak.append('text').attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, px - w / 2))).attr('y', py - 9).attr('fill', peak.L.text)
         .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `700 11px ${theme.font}`).text(txt);
@@ -1036,10 +1071,10 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     gEnd.selectAll('text').data(ends, e => e.L.key).join(enter => enter.append('text').attr('y', e => e.y))
       .attr('x', CW - cm.r + 8).attr('dy', '0.35em').attr('fill', e => e.L.text)
       .style('font', e => `${e.L.ring == null ? 700 : 600} 11px ${theme.font}`).style('cursor', 'default')
-      .text(e => `${e.L.name} · ${Math.round(e.v)} m²`)
+      .text(e => e.L.ring == null ? `${e.L.name} · ${Math.round(e.v)} m²` : `${Math.round(e.v)} m²`)
       .on('mouseenter', (event, e) => outlineRing(e.L.ring)).on('mouseleave', () => outlineRing(null))
       .call(p => go(p).attr('y', e => e.y))
-      .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? e.L.label : `${e.L.label}: ${RINGS[e.L.ring].members.length} neighbourhoods`); });
+      .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? e.L.label : `${e.L.label}: ${RINGS[e.L.ring].desc}, ${RINGS[e.L.ring].members.length} neighbourhoods`); });
   }
 
   // The period buttons show the typical 80 m² price in each period (the clicked neighbourhood's, or the
@@ -1387,7 +1422,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
     _debug: s => ({ comparable: reach(s),
-      rings: yearData(s).rings.map(r => ({ name: r.name, km: r.km, members: r.members.map(c => shortName(nameOf(c))),
+      rings: yearData(s).rings.map(r => ({ name: r.name, km: r.desc, members: r.members.map(c => shortName(nameOf(c))),
         m2: r.ys.map(d => d.f == null ? null : Math.round(d.f * s.budget)), n: r.ys.map(d => d.n) })),
       guess: { phase, truth, drawn: guessV.slice(), underLast, typical: typicalG } })
   };
