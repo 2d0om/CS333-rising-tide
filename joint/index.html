@@ -484,7 +484,7 @@ async function intro(first = 0) {
   await Promise.race([Promise.all(deals.map(a => a.finished)), woken]);
   deals.forEach(a => a.finish());
   setTimeout(() => placePill(target, 420), 250);                      // the light settles on where we are going
-  await Promise.race([new Promise(r => setTimeout(r, 1700)), woken]);   // a moment to read the four questions
+  await Promise.race([new Promise(r => setTimeout(r, 3400)), woken]);   // time to read the four questions (a click or key skips it)
 
   // wait for the chosen view, if it is still loading
   const v = VIEWS[target];
