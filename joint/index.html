@@ -115,7 +115,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 <script>
 // The four views, in order along the strip. The buyer's view (this repo) opens first.
 const VIEWS = [
-  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4', q: 'Where can my budget still buy?', src: '../', minH: 688 },   // one screen: laid out at least 688 px tall
+  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4', q: 'Where can my budget still buy?', src: '../', fixed: true },   // one screen: see fit()
   { key: 'developer', role: 'Developer', colour: '#ef8a4c', q: 'Where is apartment buying concentrated, and where are land plots sold?',
     src: 'https://urwahsheikha.github.io/cs333-view-c/' },
   { key: 'planner', role: 'Planner', colour: '#e8656e', q: 'Do sales happen where people live?',
@@ -205,8 +205,21 @@ function layout() {
   track.style.transform = `translateX(${xOf(cur)}px)`;
   placePill(cur);
 }
+// The buyer's view fills one screen and lays itself out once, so it is laid out for this screen in full
+// screen and only scaled to fit the card: exact in full screen, the same picture a little smaller in a
+// window, and nothing ever has to be redrawn when the window changes. The other views reflow by themselves.
+const BAR = 52;                    // = --bar
+let design = null;
 function fit(v) {
-  const W = CW, H = v.card.clientHeight, k = Math.min(1, W / MIN_W, v.minH ? H / v.minH : 1), el = v.frame;
+  const W = CW, H = v.card.clientHeight, el = v.frame;
+  if (v.fixed) {
+    const d = design || (design = { w: Math.max(MIN_W, screen.width - 20), h: Math.max(688, screen.height - BAR - 20) });
+    const k = Math.min(W / d.w, H / d.h);
+    el.style.width = d.w + 'px'; el.style.height = d.h + 'px';
+    el.style.transform = `translate(${(W - d.w * k) / 2}px, ${(H - d.h * k) / 2}px) scale(${k})`;
+    return;
+  }
+  const k = Math.min(1, W / MIN_W);
   el.style.width = W / k + 'px'; el.style.height = H / k + 'px'; el.style.transform = k < 1 ? `scale(${k})` : '';
 }   // every view follows a new frame size itself (the buyer's view lays itself out again), so nothing reloads
 
@@ -281,8 +294,9 @@ addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
 });
 addEventListener('popstate', () => { const k = VIEWS.findIndex(v => '#' + v.key === location.hash); go(k < 0 ? 0 : k, { push: false }); });
-let rT, relayout = false;
-addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (opening) relayout = true; else layout(); }, 100); });
+// a new window size (full screen, a resized window) is applied in the same frame, before anything is painted
+let relayout = false;
+new ResizeObserver(() => { if (opening) relayout = true; else layout(); }).observe(stage);
 
 // ---------------------------------------------------------------------
 // the opening, every time the page opens: the four views are dealt onto the table as cards, each sketching
