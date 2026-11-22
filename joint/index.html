@@ -103,42 +103,75 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   transition: opacity .4s; pointer-events: none; }
 
 
+/* ---------- the scene behind everything: Dubai at dusk, seen from the water, and the tide coming in ---------- */
+#scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background: linear-gradient(#050f1f 0%, #0b2343 38%, #1d4870 52%, #6f7f95 56.5%, #d79a6e 58.4%, #e8b27c 59%); }
+#scene .sun { position: absolute; left: 70%; top: 59%; width: 46vmax; height: 46vmax; transform: translate(-50%, -50%); border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 196, 140, .5) 0%, rgba(240, 160, 110, .18) 22%, transparent 58%); }
+#scene .city { position: absolute; left: 0; right: 0; bottom: 41%; width: 100%; height: 23vh; }
+#scene .sea { position: absolute; left: 0; right: 0; top: 59%; bottom: -60px; overflow: hidden;
+  background: linear-gradient(#24527a, #123555 30%, #0a2238 70%, #06121f); animation: tide 2.6s cubic-bezier(.2, .7, .2, 1) both; will-change: transform; }
+@keyframes tide { from { transform: translateY(70px); } to { transform: none; } }
+#scene .mirror { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 23vh; transform: scaleY(-.55); transform-origin: top; opacity: .22; filter: blur(1.5px); }
+#scene .glint { position: absolute; left: calc(70% - 70px); width: 140px; top: 0; height: 55%; opacity: .5;
+  background: repeating-linear-gradient(rgba(255, 210, 160, .55) 0 2px, transparent 2px 11px);
+  -webkit-mask-image: radial-gradient(50% 100% at 50% 0, #000, transparent); mask-image: radial-gradient(50% 100% at 50% 0, #000, transparent);
+  animation: glint 3.8s ease-in-out infinite alternate; }
+@keyframes glint { to { opacity: .22; } }
+#scene .swell { position: absolute; left: 0; width: 200%; background-repeat: repeat-x; animation: drift 14s linear infinite; will-change: transform; }
+#scene .swell.s2 { animation-duration: 22s; animation-direction: reverse; }
+#scene .swell.s3 { animation-duration: 30s; }
+#scene .dim { position: absolute; inset: 0; background: rgba(5, 14, 27, .72); opacity: 0; transition: opacity 1.2s; }
+body.viewing #scene .dim { opacity: 1; }
+#stage { z-index: 1; }
+#bar { background: rgba(7, 22, 40, .78); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); }
+#boot, #hint, #lead { z-index: 4; }
+body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
+#bar { transition: opacity .6s, visibility .6s; }
+
 /* ---------- the first page: the project, what each part is, and who made it (words only) ---------- */
-#front { position: fixed; inset: 0; z-index: 5; overflow: auto; background:
-  radial-gradient(90% 70% at 85% 115%, rgba(23, 80, 124, .55), transparent 60%), var(--night); }
-#front .in { min-height: 100%; max-width: 1240px; margin: 0 auto; padding: clamp(28px, 7vh, 96px) clamp(24px, 5vw, 64px) 22px;
+#front { position: fixed; inset: 0; z-index: 5; overflow: auto; }
+#front .in { min-height: 100%; max-width: 1280px; margin: 0 auto; padding: clamp(26px, 6vh, 80px) clamp(24px, 5vw, 64px) 18px;
   display: flex; flex-direction: column; }
-#front h1 { margin: 0; overflow: hidden; font: 600 clamp(64px, 10vw, 136px)/1.02 var(--serif); letter-spacing: -.03em; padding-bottom: .16em; margin-bottom: -.1em; }
+#front h1 { margin: 0; overflow: hidden; font: 600 clamp(60px, 9vw, 128px)/1.02 var(--serif); letter-spacing: -.03em; padding-bottom: .16em; margin-bottom: -.1em;
+  text-shadow: 0 2px 30px rgba(5, 15, 31, .5); }
 #front h1 span { display: inline-block; }
-#front .line { display: block; width: min(560px, 70%); height: 18px; margin: 6px 0 22px; overflow: visible; }
-#front .line path { fill: none; stroke: #5ea6e4; stroke-width: 2.2; stroke-linecap: round; }
-#front .sub { margin: 0; max-width: 34em; font: 500 clamp(19px, 1.7vw, 24px)/1.4 var(--serif); color: #d7dee6; }
-#front .parts { list-style: none; margin: clamp(32px, 6vh, 64px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
-#front .parts li { border-top: 2px solid var(--c); padding-top: 14px; }
+#front .line { display: block; width: min(520px, 70%); height: 18px; margin: 6px 0 18px; overflow: visible; }
+#front .line path { fill: none; stroke: #8cc4f0; stroke-width: 2.2; stroke-linecap: round; }
+#front .sub { margin: 0; max-width: 30em; font: 500 clamp(18px, 1.6vw, 23px)/1.42 var(--serif); color: #dfe6ee; }
+#front .go { margin-top: clamp(18px, 3.5vh, 34px); display: flex; align-items: center; gap: 18px; }
+#front .go button { font: 700 16px var(--sans); color: #0a1c30; background: var(--foam); padding: 13px 32px; border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(5, 15, 31, .35); transition: transform .2s, background-color .2s; }
+#front .go button:hover { background: #fff; transform: translateY(-1px); }
+#front .go span { color: #c3cfdb; font-size: 14px; }
+#front .parts { list-style: none; margin: auto 0 0; padding: clamp(24px, 4vh, 40px) 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+#front .parts li { padding: 15px 18px 17px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .09); border-top: 2px solid var(--c);
+  background: rgba(7, 24, 42, .58); -webkit-backdrop-filter: blur(10px) saturate(1.15); backdrop-filter: blur(10px) saturate(1.15); }
 #front .who { display: flex; align-items: baseline; gap: 10px; font-weight: 700; color: var(--c); font-size: 14.5px; }
 #front .who em { font-style: normal; font-weight: 500; color: var(--foam); }
-#front .q { margin: 8px 0 8px; font: 600 19px/1.3 var(--serif); color: var(--foam); }
-#front .what { margin: 0; font-size: 14px; line-height: 1.55; color: var(--mist); }
-#front .go { margin-top: clamp(32px, 6vh, 56px); display: flex; align-items: center; gap: 18px; }
-#front .go button { font: 700 16px var(--sans); color: var(--night); background: var(--foam); padding: 13px 30px; border-radius: 999px;
-  transition: transform .2s, background-color .2s; }
-#front .go button:hover { background: #fff; transform: translateY(-1px); }
-#front .go span { color: var(--mist); font-size: 14px; }
-#front .foot { margin: auto 0 0; padding-top: 28px; color: rgba(143, 164, 185, .75); font-size: 12.5px; }
+#front .q { margin: 7px 0 7px; font: 600 18.5px/1.3 var(--serif); color: var(--foam); }
+#front .what { margin: 0; font-size: 13.5px; line-height: 1.55; color: #a9bacb; }
+#front .foot { margin: 14px 0 0; color: rgba(169, 186, 203, .75); font-size: 12.5px; }
 @media (max-width: 980px) { #front .parts { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 560px) { #front .parts { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 10px 8px; font-size: 14px; } #bar { padding-left: 8px; } }
-@media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave, #scene .swell, #scene .glint, #scene .sea { animation: none; } }
 </style>
 </head>
 <body>
+<div id="scene" aria-hidden="true">
+  <div class="sun"></div>
+  <svg class="city" id="city" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice"></svg>
+  <div class="sea"><svg class="mirror" id="mirror" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice"></svg><div class="glint"></div></div>
+  <div class="dim"></div>
+</div>
 <section id="front" aria-label="Rising Tide">
   <div class="in">
     <h1><span>Rising Tide</span></h1>
     <svg class="line" viewBox="0 0 560 18" preserveAspectRatio="none" aria-hidden="true"><path id="frontLine" d=""/></svg>
     <p class="sub">Dubai's property boom, 2015 to 2026, seen from four seats. In our sample, yearly sales grew five times, from about 2,100 to 10,700.</p>
-    <ol class="parts" id="parts"></ol>
     <div class="go"><button type="button" id="begin">Begin</button><span>or press Enter</span></div>
+    <ol class="parts" id="parts"></ol>
     <p class="foot">A CS333 team project. Data: Dubai Land Department transactions, 10% sample, January 2015 to August 2026.</p>
   </div>
 </section>
@@ -214,6 +247,39 @@ const FX = {
       r += `<i class="dot" style="left:${p[0] / 4}%;top:${p[1]}%;background:${col(i + 1)};--k:${i * 85 + 80}ms"></i>`; });
     return `<div class="fx" aria-hidden="true"><div class="box">${r}</div></div>`; }
 };
+
+// ---------------------------------------------------------------------
+// the scene: a skyline of Dubai at dusk across the horizon (a drawing, not data), its reflection, and
+// three swells drifting at different speeds. The sea rises a little when the page opens: the tide coming in.
+// ---------------------------------------------------------------------
+(function scene() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const towers = [], lights = [];
+  const tower = (x, w, h, top = 'flat') => { towers.push({ x, w, h, top });
+    for (let k = 0; k < h / 26; k++) if (rnd() < .35) lights.push([x + 3 + rnd() * (w - 7), 260 - 8 - rnd() * (h - 14)]); };
+  // low city along the whole coast, with taller clusters where the towers are (the Marina, Business Bay, Downtown)
+  for (let x = 0; x < 1440;) { const w = 14 + rnd() * 30; tower(x, w, 14 + rnd() * 38); x += w + rnd() * 6; }
+  const cluster = (cx, spread, n, hmin, hmax) => { for (let i = 0; i < n; i++) {
+    const w = 12 + rnd() * 20, x = cx + (rnd() - .5) * spread; tower(x, w, hmin + rnd() * (hmax - hmin), rnd() < .25 ? 'point' : 'flat'); } };
+  cluster(300, 220, 16, 60, 150); cluster(760, 180, 12, 50, 120); cluster(1010, 160, 12, 60, 135);
+  const path = towers.map(t => t.top === 'point'
+    ? `M${t.x} 260 V${260 - t.h} L${t.x + t.w / 2} ${260 - t.h - 14} L${t.x + t.w} ${260 - t.h} V260 Z`
+    : `M${t.x} 260 V${260 - t.h} H${t.x + t.w} V260 Z`).join('');
+  // the tall spire (a stepped needle) and a sail-shaped hotel on the shore
+  const spire = 'M925 260 V150 H929 V112 H933 V78 H936 V40 H938 V6 H939 V40 H941 V78 H944 V112 H948 V150 H952 V260 Z';
+  const sail = 'M96 260 V176 C130 186 150 214 158 260 Z M96 176 V168 H99 V260 Z';
+  const ink = `<defs><linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1d31"/><stop offset="1" stop-color="#1a3a58"/></linearGradient></defs>
+    <path d="${path}${spire}${sail}" fill="url(#haze)"/>`;
+  document.getElementById('city').innerHTML = ink + lights.map(([x, y]) => `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="2.2" height="3" fill="#f5c57a" opacity="${(.35 + rnd() * .5).toFixed(2)}"/>`).join('');
+  document.getElementById('mirror').innerHTML = `<path d="${path}${spire}${sail}" fill="#0b1d31"/>`;
+  const sea = document.querySelector('#scene .sea');
+  const wave = (y, amp, op, w) => `url('data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 40" preserveAspectRatio="none"><path d="M0 ${y} Q${w / 4} ${y - amp} ${w / 2} ${y} T${w} ${y}" fill="none" stroke="rgba(170,214,245,${op})" stroke-width="1.2"/></svg>`)}')`;
+  [[8, 18, 4, .35, 180], [30, 26, 5, .25, 260], [55, 34, 6, .18, 340], [78, 40, 7, .12, 420]].forEach(([top, h, amp, op, w], i) => {
+    const d = document.createElement('div'); d.className = 'swell s' + (i % 3 + 1);
+    Object.assign(d.style, { top: top + '%', height: h + 'px', backgroundImage: wave(20, amp, op, w), backgroundSize: `${w}px 100%` });
+    sea.appendChild(d);
+  });
+})();
 
 // ---------------------------------------------------------------------
 // tabs and cards
@@ -509,6 +575,7 @@ async function intro(first = 0) {
   }
   v.shown = true;
   stacked = true; relayout = false; layout();                        // from now on the cards wait stacked, ready
+  document.body.classList.add('viewing');
 }
 const H = () => stage.clientHeight;
 
@@ -527,22 +594,24 @@ function front() {
     el.querySelector('h1 span').animate([{ transform: 'translateY(105%)' }, { transform: 'none' }], { duration: 1000, easing: ease, delay: 150, fill: 'backwards' });
     const L = line.getTotalLength(); line.style.strokeDasharray = L;
     line.animate([{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { duration: 1300, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'backwards' });
-    [el.querySelector('.sub'), ...list.children, el.querySelector('.go'), el.querySelector('.foot')].forEach((n, i) =>
+    [el.querySelector('.sub'), el.querySelector('.go'), ...list.children, el.querySelector('.foot')].forEach((n, i) =>
       n.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 650, delay: 700 + i * 110, easing: ease, fill: 'backwards' }));
   }
   return new Promise(res => {
     let done = false;
     const begin = i => { if (done) return; done = true; removeEventListener('keydown', key); res(i); };
-    const key = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(0); } else if (/^[1-4]$/.test(e.key)) begin(+e.key - 1); };
+    const shownAt = performance.now();
+    const key = e => { if (e.repeat || performance.now() - shownAt < 900) return;    // nothing moves on before the reader asks
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); begin(0); } else if (/^[1-4]$/.test(e.key)) begin(+e.key - 1); };
     addEventListener('keydown', key);
     $('begin').addEventListener('click', () => begin(0));
   });
 }
 async function leaveFront() {
   const el = $('front');
-  if (!reduce) await el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-6%)', opacity: 0 }],
-    { duration: 520, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).finished;
-  el.remove();
+  if (!reduce) await el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-3%)', opacity: 0 }],
+    { duration: 480, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' }).finished;
+  el.remove(); document.body.classList.remove('front');
 }
 
 // ---------------------------------------------------------------------
@@ -554,6 +623,7 @@ async function leaveFront() {
   cur = k < 0 ? 0 : k;
   layout();
   if (k < 0) {                                       // a plain visit starts on the first page; a link to a view skips it
+    document.body.classList.add('front');
     load(VIEWS[0]);
     cur = await front();
     await leaveFront();
