@@ -8,45 +8,45 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
 <style>
-/* The four views side by side on one strip. Moving between them pulls back a little, slides along the
-   strip and settles on the next view, so you see they are one piece. Each view loads untouched
-   (the Investor view is a copy with the team palette). */
+/* Rising Tide, the joint page: a first page, an opening that deals the four views as cards, and the views
+   themselves, with their marks flying from one view into the next. A light page around light views. */
 :root {
-  --night: #06121f; --bar-bg: #081b2e; --foam: #f2ead9; --mist: #8fa4b9; --line: rgba(242, 234, 217, .12);
+  --page: #eef2f6; --ink: #16233b; --quiet: #5b6b85; --line: #e1e7ee;
   --bar: 62px;
   --serif: 'Source Serif 4', Georgia, serif; --sans: 'DM Sans', system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { margin: 0; overflow: hidden; background: var(--night); color: var(--foam); font: 14px/1.4 var(--sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; overflow: hidden; background: var(--page); color: var(--ink); font: 14px/1.4 var(--sans); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-:focus-visible { outline: 2px solid var(--foam); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 #bar { position: fixed; left: 0; right: 0; top: 0; height: var(--bar); display: flex; align-items: center; gap: 22px;
-  padding: 0 12px 0 20px; background: var(--bar-bg); border-bottom: 1px solid var(--line); z-index: 3; }
+  padding: 0 12px 0 20px; background: #fff; border-bottom: 1px solid var(--line); z-index: 3; }
 .name { font: 600 17px var(--serif); white-space: nowrap; }
-#tabs { position: relative; flex: 1; display: flex; gap: 4px; padding: 4px; border-radius: 11px; background: rgba(255, 255, 255, .04); }
+#tabs { position: relative; flex: 1; display: flex; gap: 4px; padding: 4px; border-radius: 11px; background: #f1f4f8; }
 #pill { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 8px; background: var(--pc, transparent);
   box-shadow: inset 0 0 0 1px var(--pb, transparent); pointer-events: none; }
-.tab { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 16px; border-radius: 8px; font-size: 15.5px; color: var(--mist);
+.tab { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 11px 16px; border-radius: 8px; font-size: 15.5px; color: var(--quiet);
   font-weight: 500; transition: color .3s; white-space: nowrap; }
-.tab i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); opacity: .8; }
-.tab:hover, .tab[aria-current="page"] { color: var(--foam); }
-.tab kbd { font: 500 11.5px var(--sans); color: rgba(143, 164, 185, .65); }
-.tab:focus-visible { outline: 1px solid rgba(242, 234, 217, .45); outline-offset: -1px; }
-#alone { margin-left: auto; color: var(--mist); text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: 8px; white-space: nowrap; }
-#alone:hover { color: var(--foam); background: rgba(255, 255, 255, .05); }
+.tab i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.tab:hover, .tab[aria-current="page"] { color: var(--ink); }
+.tab[aria-current="page"] { font-weight: 700; }
+.tab kbd { font: 500 11.5px var(--sans); color: #97a6bf; }
+.tab:focus-visible { outline: 1px solid rgba(22, 35, 59, .35); outline-offset: -1px; }
+#alone { margin-left: auto; color: var(--quiet); text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: 8px; white-space: nowrap; }
+#alone:hover { color: var(--ink); background: #f1f4f8; }
 
 #stage { position: fixed; left: 0; right: 0; top: var(--bar); bottom: 0; overflow: hidden; }
 #scaler { position: absolute; inset: 0; transform-origin: 50% 50%; }
 #track { position: absolute; left: 0; top: 0; height: 100%; }
 .card { position: absolute; top: 10px; bottom: 10px; border-radius: 12px; overflow: hidden; background: #fff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, .05), 0 20px 50px rgba(0, 0, 0, .4); }
+  box-shadow: 0 0 0 1px rgba(22, 35, 59, .07), 0 14px 36px rgba(22, 35, 59, .12); }
 .card iframe { position: absolute; left: 0; top: 0; border: 0; background: #fff; transform-origin: 0 0; }
 .veil { position: absolute; inset: 0; display: grid; place-items: center; background: #fff; color: #16233b; text-align: center;
   transition: opacity .5s; z-index: 1; }
 .veil.off { opacity: 0; pointer-events: none; }
-.veil b { display: block; font: 700 13px var(--sans); color: var(--c); margin-bottom: 6px; }
+.veil b { display: block; font: 700 13px var(--sans); color: var(--k); margin-bottom: 6px; }
 .veil span { display: block; max-width: 22em; padding: 0 24px; font: 600 26px/1.2 var(--serif); }
 .veil em { position: relative; display: block; width: 120px; height: 2px; margin: 18px auto 0; border-radius: 2px; overflow: hidden; background: #e5e9ef; }
 .veil em::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--c); animation: run 1.1s ease-in-out infinite; }
@@ -56,7 +56,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #track.intro .veil b { font-size: calc(13px / var(--s)); margin-bottom: calc(6px / var(--s)); }
 #track.intro .veil span { font-size: calc(18px / var(--s)); line-height: 1.18; padding: 0 calc(14px / var(--s)); }
 #track.intro .veil em { width: calc(70px / var(--s)); height: calc(2px / var(--s)); margin-top: calc(11px / var(--s)); }
-#track.intro .card:hover { box-shadow: 0 0 0 calc(2px / var(--s)) rgba(242, 234, 217, .6), 0 20px 50px rgba(0, 0, 0, .4); }
+#track.intro .card:hover { box-shadow: 0 0 0 calc(2px / var(--s)) var(--c), 0 14px 36px rgba(22, 35, 59, .14); }
 /* while the buyer's view loads, its card fills with sea */
 /* each card plays a small sketch of its own chart as it lands: the buyer's fills with sea, the developer's
    heatmap ripples into its diagonal, the planner's ribbons cross the creek, the investor's path draws itself.
@@ -90,82 +90,60 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .fx .dot { width: 1.4%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; animation: pop .25s ease-out calc(var(--d) + var(--k)) forwards; }
 @keyframes pop { to { opacity: 1; } }
 .fx .arrow { height: 2%; border-top: 2px dashed rgba(140, 147, 168, .55); transform-origin: 0 0; opacity: 0; animation: pop .6s ease-out var(--d) forwards; }
-#hint { position: fixed; left: 0; right: 0; bottom: 9%; margin: 0; text-align: center; color: var(--mist); font-size: 14px;
+#hint { position: fixed; left: 0; right: 0; bottom: 9%; margin: 0; text-align: center; color: var(--quiet); font-size: 14px;
   opacity: 0; transition: opacity .4s; pointer-events: none; }
-#lead { position: fixed; left: 0; right: 0; margin: 0; text-align: center; font: 600 22px var(--serif); color: var(--foam);
+#lead { position: fixed; left: 0; right: 0; margin: 0; text-align: center; font: 600 22px var(--serif); color: var(--ink);
   pointer-events: none; opacity: 0; transition: opacity .6s; }
 #morph { position: fixed; inset: 0; z-index: 2; pointer-events: none; display: none; }
 #morph .clip { position: absolute; overflow: hidden; border-radius: 12px; }
 #morph .paper { position: absolute; inset: 0; opacity: 0; }
 #morph i { position: absolute; left: 0; top: 0; width: 10px; height: 10px; transform-origin: 0 0; will-change: transform, opacity; }
 #morph b { position: absolute; inset: 0; opacity: 0; }
-#boot { position: fixed; inset: var(--bar) 0 0; margin: 0; display: grid; place-items: center; color: var(--mist); font-size: 15px;
+#boot { position: fixed; inset: var(--bar) 0 0; margin: 0; display: grid; place-items: center; color: var(--quiet); font-size: 15px;
   transition: opacity .4s; pointer-events: none; }
 
 
-/* ---------- the scene behind everything: Dubai at dusk, seen from the water, and the tide coming in ---------- */
-#scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
-  background: linear-gradient(#050f1f 0%, #0b2343 38%, #1d4870 52%, #6f7f95 56.5%, #d79a6e 58.4%, #e8b27c 59%); }
-#scene .sun { position: absolute; left: 70%; top: 59%; width: 46vmax; height: 46vmax; transform: translate(-50%, -50%); border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 196, 140, .5) 0%, rgba(240, 160, 110, .18) 22%, transparent 58%); }
-#scene .city { position: absolute; left: 0; right: 0; bottom: 41%; width: 100%; height: 23vh; }
-#scene .sea { position: absolute; left: 0; right: 0; top: 59%; bottom: -60px; overflow: hidden;
-  background: linear-gradient(#24527a, #123555 30%, #0a2238 70%, #06121f); animation: tide 2.6s cubic-bezier(.2, .7, .2, 1) both; will-change: transform; }
-@keyframes tide { from { transform: translateY(70px); } to { transform: none; } }
-#scene .mirror { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 23vh; transform: scaleY(-.55); transform-origin: top; opacity: .22; filter: blur(1.5px); }
-#scene .glint { position: absolute; left: calc(70% - 70px); width: 140px; top: 0; height: 55%; opacity: .5;
-  background: repeating-linear-gradient(rgba(255, 210, 160, .55) 0 2px, transparent 2px 11px);
-  -webkit-mask-image: radial-gradient(50% 100% at 50% 0, #000, transparent); mask-image: radial-gradient(50% 100% at 50% 0, #000, transparent);
-  animation: glint 3.8s ease-in-out infinite alternate; }
-@keyframes glint { to { opacity: .22; } }
-#scene .swell { position: absolute; left: 0; width: 200%; background-repeat: repeat-x; animation: drift 14s linear infinite; will-change: transform; }
-#scene .swell.s2 { animation-duration: 22s; animation-direction: reverse; }
-#scene .swell.s3 { animation-duration: 30s; }
-#scene .dim { position: absolute; inset: 0; background: rgba(5, 14, 27, .72); opacity: 0; transition: opacity 1.2s; }
-body.viewing #scene .dim { opacity: 1; }
 #stage { z-index: 1; }
-#bar { background: rgba(7, 22, 40, .78); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); }
 #boot, #hint, #lead { z-index: 4; }
 body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
 #bar { transition: opacity .6s, visibility .6s; }
 
 /* ---------- the first page: the project, what each part is, and who made it (words only) ---------- */
-#front { position: fixed; inset: 0; z-index: 5; overflow: auto; }
-#front .in { min-height: 100%; max-width: 1280px; margin: 0 auto; padding: clamp(26px, 6vh, 80px) clamp(24px, 5vw, 64px) 18px;
+#front { position: fixed; inset: 0; z-index: 5; overflow: auto; background: #fff; }
+#front .sea { position: absolute; left: 0; right: 0; bottom: 0; height: 46%; pointer-events: none; overflow: hidden;
+  background: linear-gradient(rgba(94, 166, 228, 0), rgba(94, 166, 228, .07) 45%, rgba(94, 166, 228, .13)); }
+#front .sea i { position: absolute; left: 0; width: 200%; height: 26px; background-repeat: repeat-x; animation: drift 18s linear infinite; }
+#front .sea i.b { animation-duration: 26s; animation-direction: reverse; }
+#front .in { position: relative; min-height: 100%; max-width: 1280px; margin: 0 auto; padding: clamp(28px, 7vh, 88px) clamp(24px, 5vw, 64px) 18px;
   display: flex; flex-direction: column; }
-#front h1 { margin: 0; overflow: hidden; font: 600 clamp(60px, 9vw, 128px)/1.02 var(--serif); letter-spacing: -.03em; padding-bottom: .16em; margin-bottom: -.1em;
-  text-shadow: 0 2px 30px rgba(5, 15, 31, .5); }
+#front h1 { margin: 0; overflow: hidden; font: 600 clamp(60px, 9vw, 124px)/1.02 var(--serif); letter-spacing: -.03em; color: var(--ink);
+  padding-bottom: .16em; margin-bottom: -.1em; }
 #front h1 span { display: inline-block; }
 #front .line { display: block; width: min(520px, 70%); height: 18px; margin: 6px 0 18px; overflow: visible; }
-#front .line path { fill: none; stroke: #8cc4f0; stroke-width: 2.2; stroke-linecap: round; }
-#front .sub { margin: 0; max-width: 30em; font: 500 clamp(18px, 1.6vw, 23px)/1.42 var(--serif); color: #dfe6ee; }
+#front .line path { fill: none; stroke: #3d7fb5; stroke-width: 2.2; stroke-linecap: round; }
+#front .sub { margin: 0; max-width: 31em; font: 500 clamp(18px, 1.6vw, 23px)/1.45 var(--serif); color: #3b4a63; }
 #front .go { margin-top: clamp(18px, 3.5vh, 34px); display: flex; align-items: center; gap: 18px; }
-#front .go button { font: 700 16px var(--sans); color: #0a1c30; background: var(--foam); padding: 13px 32px; border-radius: 999px;
-  box-shadow: 0 10px 30px rgba(5, 15, 31, .35); transition: transform .2s, background-color .2s; }
-#front .go button:hover { background: #fff; transform: translateY(-1px); }
-#front .go span { color: #c3cfdb; font-size: 14px; }
+#front .go button { font: 700 16px var(--sans); color: #fff; background: var(--ink); padding: 13px 32px; border-radius: 999px;
+  box-shadow: 0 8px 22px rgba(22, 35, 59, .18); transition: transform .2s, background-color .2s; }
+#front .go button:hover { background: #22345a; transform: translateY(-1px); }
+#front .go span { color: var(--quiet); font-size: 14px; }
 #front .parts { list-style: none; margin: auto 0 0; padding: clamp(24px, 4vh, 40px) 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-#front .parts li { padding: 15px 18px 17px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .09); border-top: 2px solid var(--c);
-  background: rgba(7, 24, 42, .58); -webkit-backdrop-filter: blur(10px) saturate(1.15); backdrop-filter: blur(10px) saturate(1.15); }
-#front .who { display: flex; align-items: baseline; gap: 10px; font-weight: 700; color: var(--c); font-size: 14.5px; }
-#front .who em { font-style: normal; font-weight: 500; color: var(--foam); }
-#front .q { margin: 7px 0 7px; font: 600 18.5px/1.3 var(--serif); color: var(--foam); }
-#front .what { margin: 0; font-size: 13.5px; line-height: 1.55; color: #a9bacb; }
-#front .foot { margin: 14px 0 0; color: rgba(169, 186, 203, .75); font-size: 12.5px; }
+#front .parts li { padding: 16px 18px 18px; border-radius: 14px; background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--c);
+  box-shadow: 0 10px 28px rgba(22, 35, 59, .07); }
+#front .who { display: flex; align-items: baseline; gap: 10px; font-weight: 700; color: var(--k); font-size: 14.5px; }
+#front .who em { font-style: normal; font-weight: 500; color: var(--ink); }
+#front .q { margin: 7px 0 7px; font: 600 18.5px/1.3 var(--serif); color: var(--ink); }
+#front .what { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--quiet); }
+#front .foot { margin: 14px 0 0; color: #7d8ba1; font-size: 12.5px; }
 @media (max-width: 980px) { #front .parts { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 560px) { #front .parts { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 10px 8px; font-size: 14px; } #bar { padding-left: 8px; } }
-@media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave, #scene .swell, #scene .glint, #scene .sea { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave, #front .sea i { animation: none; } }
 </style>
 </head>
 <body>
-<div id="scene" aria-hidden="true">
-  <div class="sun"></div>
-  <svg class="city" id="city" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice"></svg>
-  <div class="sea"><svg class="mirror" id="mirror" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice"></svg><div class="glint"></div></div>
-  <div class="dim"></div>
-</div>
 <section id="front" aria-label="Rising Tide">
+  <div class="sea" id="frontSea" aria-hidden="true"></div>
   <div class="in">
     <h1><span>Rising Tide</span></h1>
     <svg class="line" viewBox="0 0 560 18" preserveAspectRatio="none" aria-hidden="true"><path id="frontLine" d=""/></svg>
@@ -190,15 +168,15 @@ body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
 // of the members' pages on this same site (views/README.md), so the page can read their marks and carry
 // them into the next view; "own" is each member's own page.
 const VIEWS = [
-  { key: 'buyer', role: 'Buyer', by: 'Adam', colour: '#5ea6e4',
+  { key: 'buyer', k: '#2a6fb0', role: 'Buyer', by: 'Adam', colour: '#5ea6e4',
     what: 'A map where your budget is the sea level. Guess first, then drag the budget and watch neighbourhoods go under water.', q: 'Where can my budget still buy?', src: '../', own: '../', fixed: true },   // one screen: see fit()
-  { key: 'developer', role: 'Developer', by: 'Urwah', colour: '#ef8a4c',
+  { key: 'developer', k: '#c0601f', role: 'Developer', by: 'Urwah', colour: '#ef8a4c',
     what: 'A heatmap of 41 projects by year that re-sorts by peak year, with land-plot sales beside it.', q: 'Where is apartment buying concentrated, and where are land plots sold?',
     src: 'views/developer/', own: 'https://urwahsheikha.github.io/cs333-view-c/' },
-  { key: 'planner', role: 'Planner', by: 'Nabeel', colour: '#e8656e',
+  { key: 'planner', k: '#c23b4e', role: 'Planner', by: 'Nabeel', colour: '#e8656e',
     what: 'Ribbons from where Dubai\'s residents live to where its flats sell, split by sales or by distance to the metro.', q: 'Do sales happen where people live?',
     src: 'views/planner/', own: 'https://babar-nabeel.github.io/Data-Viz-Project/' },
-  { key: 'investor', role: 'Investor', by: 'Shahzad', colour: '#46b8a8',
+  { key: 'investor', k: '#13877a', role: 'Investor', by: 'Shahzad', colour: '#46b8a8',
     what: 'The central bank\'s rate against monthly sales, replayed month by month, with a rate dial and a count of mortgages.', q: 'Who is paying, and with what money?',
     src: 'views/investor/', own: 'views/investor/' }            // Shahzad's view with the team palette
 ];
@@ -249,39 +227,6 @@ const FX = {
 };
 
 // ---------------------------------------------------------------------
-// the scene: a skyline of Dubai at dusk across the horizon (a drawing, not data), its reflection, and
-// three swells drifting at different speeds. The sea rises a little when the page opens: the tide coming in.
-// ---------------------------------------------------------------------
-(function scene() {
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const towers = [], lights = [];
-  const tower = (x, w, h, top = 'flat') => { towers.push({ x, w, h, top });
-    for (let k = 0; k < h / 26; k++) if (rnd() < .35) lights.push([x + 3 + rnd() * (w - 7), 260 - 8 - rnd() * (h - 14)]); };
-  // low city along the whole coast, with taller clusters where the towers are (the Marina, Business Bay, Downtown)
-  for (let x = 0; x < 1440;) { const w = 14 + rnd() * 30; tower(x, w, 14 + rnd() * 38); x += w + rnd() * 6; }
-  const cluster = (cx, spread, n, hmin, hmax) => { for (let i = 0; i < n; i++) {
-    const w = 12 + rnd() * 20, x = cx + (rnd() - .5) * spread; tower(x, w, hmin + rnd() * (hmax - hmin), rnd() < .25 ? 'point' : 'flat'); } };
-  cluster(300, 220, 16, 60, 150); cluster(760, 180, 12, 50, 120); cluster(1010, 160, 12, 60, 135);
-  const path = towers.map(t => t.top === 'point'
-    ? `M${t.x} 260 V${260 - t.h} L${t.x + t.w / 2} ${260 - t.h - 14} L${t.x + t.w} ${260 - t.h} V260 Z`
-    : `M${t.x} 260 V${260 - t.h} H${t.x + t.w} V260 Z`).join('');
-  // the tall spire (a stepped needle) and a sail-shaped hotel on the shore
-  const spire = 'M925 260 V150 H929 V112 H933 V78 H936 V40 H938 V6 H939 V40 H941 V78 H944 V112 H948 V150 H952 V260 Z';
-  const sail = 'M96 260 V176 C130 186 150 214 158 260 Z M96 176 V168 H99 V260 Z';
-  const ink = `<defs><linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1d31"/><stop offset="1" stop-color="#1a3a58"/></linearGradient></defs>
-    <path d="${path}${spire}${sail}" fill="url(#haze)"/>`;
-  document.getElementById('city').innerHTML = ink + lights.map(([x, y]) => `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="2.2" height="3" fill="#f5c57a" opacity="${(.35 + rnd() * .5).toFixed(2)}"/>`).join('');
-  document.getElementById('mirror').innerHTML = `<path d="${path}${spire}${sail}" fill="#0b1d31"/>`;
-  const sea = document.querySelector('#scene .sea');
-  const wave = (y, amp, op, w) => `url('data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 40" preserveAspectRatio="none"><path d="M0 ${y} Q${w / 4} ${y - amp} ${w / 2} ${y} T${w} ${y}" fill="none" stroke="rgba(170,214,245,${op})" stroke-width="1.2"/></svg>`)}')`;
-  [[8, 18, 4, .35, 180], [30, 26, 5, .25, 260], [55, 34, 6, .18, 340], [78, 40, 7, .12, 420]].forEach(([top, h, amp, op, w], i) => {
-    const d = document.createElement('div'); d.className = 'swell s' + (i % 3 + 1);
-    Object.assign(d.style, { top: top + '%', height: h + 'px', backgroundImage: wave(20, amp, op, w), backgroundSize: `${w}px 100%` });
-    sea.appendChild(d);
-  });
-})();
-
-// ---------------------------------------------------------------------
 // tabs and cards
 // ---------------------------------------------------------------------
 VIEWS.forEach((v, i) => {
@@ -292,7 +237,7 @@ VIEWS.forEach((v, i) => {
   tabs.appendChild(b); v.tab = b;
 
   const card = document.createElement('section');
-  card.className = 'card ' + v.key; card.style.setProperty('--c', v.colour); card.setAttribute('aria-label', `${v.role}: ${v.q}`);
+  card.className = 'card ' + v.key; card.style.setProperty('--c', v.colour); card.style.setProperty('--k', v.k); card.setAttribute('aria-label', `${v.role}: ${v.q}`);
   card.innerHTML = `<div class="veil"><div class="txt"><b>${v.role}</b><span>${v.q}</span><em></em></div>${FX[v.key]()}</div>`;
   card.style.setProperty('--d', 640 + i * 170 + 'ms');               // starts as the card lands
   track.appendChild(card); v.card = card; v.veil = card.firstChild;
@@ -575,7 +520,6 @@ async function intro(first = 0) {
   }
   v.shown = true;
   stacked = true; relayout = false; layout();                        // from now on the cards wait stacked, ready
-  document.body.classList.add('viewing');
 }
 const H = () => stage.clientHeight;
 
@@ -585,8 +529,11 @@ const H = () => stage.clientHeight;
 // ---------------------------------------------------------------------
 function front() {
   const el = $('front'), list = $('parts');
-  list.innerHTML = VIEWS.map((v, i) => `<li style="--c:${v.colour}"><div class="who">${i + 1}&nbsp; ${v.role} <em>${v.by}</em></div>
+  list.innerHTML = VIEWS.map((v, i) => `<li style="--c:${v.colour};--k:${v.k}"><div class="who">${i + 1}&nbsp; ${v.role} <em>${v.by}</em></div>
     <p class="q">${v.q}</p><p class="what">${v.what}</p></li>`).join('');
+  const sw = (y, amp, op, w) => `url('data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 26" preserveAspectRatio="none"><path d="M0 ${y} Q${w / 4} ${y - amp} ${w / 2} ${y} T${w} ${y}" fill="none" stroke="rgba(61,127,181,${op})" stroke-width="1.3"/></svg>`)}')`;
+  $('frontSea').innerHTML = [[38, 13, 5, .22, 260, ''], [62, 13, 6, .16, 340, 'b'], [84, 13, 6, .12, 420, '']].map(([top, y, amp, op, w, c]) =>
+    `<i class="${c}" style="top:${top}%;background-image:${sw(y, amp, op, w)};background-size:${w}px 100%"></i>`).join('');
   const line = $('frontLine');
   line.setAttribute('d', (() => { let d = 'M0 9'; for (let i = 0; i < 8; i++) d += ` Q${i * 70 + 17.5} 3 ${i * 70 + 35} 9 T${(i + 1) * 70} 9`; return d; })());
   if (!reduce) {
