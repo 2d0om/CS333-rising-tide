@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · cleaner reach chart, floor plan in the headline · 2026-11-22';
+export const BUILD = 'View B · rings line chart: the home your budget buys, by distance from Downtown · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -154,6 +154,62 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   });
   const stations = data.metro.features.map(f => ({ coords: f.geometry.coordinates }));
 
+  // ---------- by year, and by distance from Downtown (the line chart) ----------
+  // Rings: the counted neighbourhoods (20+ flat sales in every period, all homes) cut into equal thirds by
+  // the distance from their centre to Downtown Dubai (the Burj Khalifa). A fixed cut, so a ring keeps its
+  // members whatever the filters. Years: 2015 to 2026; the window ends on 31 Aug 2026, so 2026 is partial.
+  const DOWNTOWN = [55.2744, 25.1972];
+  const YEARS = d3.range(R.PERIODS[PERIOD_KEYS[0]][0], R.PERIODS[PERIOD_KEYS[PERIOD_KEYS.length - 1]][1] + 1);
+  const PARTIAL_YEAR = 2026;
+  const YEAR_MIN = 10, RING_MIN = 5;      // a neighbourhood counts in a year with 10+ sales; a ring needs 5 of them
+  const kmTo = c => byComm.has(c) ? d3.geoDistance(d3.geoCentroid(byComm.get(c)), DOWNTOWN) * 6371 : Infinity;
+  const ringBase = { mode: 'all', homeType: 'apartment', money: 'nominal', dropExtremes: false, budget: 1e6, size: 80,
+    period: PERIOD_KEYS[PERIOD_KEYS.length - 1], thenPeriod: PERIOD_KEYS[0] };
+  const byDist = reach(ringBase).set.filter(c => Number.isFinite(kmTo(c))).sort((a, b) => kmTo(a) - kmTo(b));
+  const third = Math.ceil(byDist.length / 3);
+  const RINGS = ['Inner', 'Middle', 'Outer'].map((name, i) => ({ key: name.toLowerCase(), name,
+    members: byDist.slice(i * third, (i + 1) * third) })).filter(r => r.members.length);
+  const cut = i => Math.round((kmTo(RINGS[i].members[RINGS[i].members.length - 1]) + kmTo(RINGS[i + 1].members[0])) / 2);
+  RINGS.forEach((r, i) => {
+    r.km = RINGS.length < 3 ? '' : i === 0 ? `under ${cut(0)} km` : i === 1 ? `${cut(0)}–${cut(1)} km` : `over ${cut(1)} km`;
+  });
+  const yearCache = new Map();
+  function yearData(s) {                  // { byYC: year -> comm -> sorted prices, rings: per ring, per year, m² per AED }
+    const key = [s.mode, s.homeType, s.money, s.dropExtremes].join('|');
+    if (yearCache.has(key)) return yearCache.get(key);
+    const byYC = new Map();
+    for (const { r, comm } of homeSales) {
+      if (!R.isHomeSale(r, s.homeType) || !R.inMode(r, s.mode)) continue;
+      if (s.dropExtremes && R.isExtreme(r)) continue;
+      if (!Number.isFinite(r.price)) continue;
+      const y = r.date.getUTCFullYear();
+      let m = byYC.get(y); if (!m) byYC.set(y, (m = new Map()));
+      let a = m.get(comm); if (!a) m.set(comm, (a = []));
+      a.push(R.priceIn(r, s.money));
+    }
+    // A ring's line = its 2015–17 level (the middle neighbourhood's m² per AED) × the median of its
+    // neighbourhoods' own price change since 2015–17. Each neighbourhood is compared only with itself, so
+    // one dropping in or out of a year's sample cannot make the line jump.
+    const base = pricesBy(PERIOD_KEYS[0], s);
+    const rings = RINGS.map(ring => {
+      const p0 = new Map(ring.members.filter(c => (base.get(c) || []).length >= R.MIN_SALES).map(c => [c, d3.median(base.get(c))]));
+      const level = d3.median([...p0.values()], v => 1 / v);
+      const ys = YEARS.map(y => {
+        const m = byYC.get(y), rel = [];
+        for (const [c, v0] of p0) { const a = m && m.get(c); if (a && a.length >= YEAR_MIN) rel.push(v0 / d3.median(a)); }
+        return { y, f: rel.length >= RING_MIN && level ? level * d3.median(rel) : null, n: rel.length };
+      });
+      return { ...ring, ys };
+    });
+    const out = { byYC, rings };
+    yearCache.set(key, out);
+    return out;
+  }
+  const commYearly = (s, c) => {         // one neighbourhood, m² per AED each year it has 10+ sales
+    const { byYC } = yearData(s);
+    return YEARS.map(y => { const a = byYC.get(y) && byYC.get(y).get(c); return { y, f: a && a.length >= YEAR_MIN ? 1 / d3.median(a) : null }; });
+  };
+
   // ---------- encoding ----------
   // Depth = share of homes OUT of reach. Sand darkens from 0% to 50%; at 50% the coastline is
   // crossed and water deepens to 100%. Lightness carries the order; hue only says sand or sea.
@@ -219,9 +275,25 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const headRow = headline.append('div').style('display', 'flex').style('align-items', 'flex-end').style('gap', '12px')
     .style('margin', '6px 0 5px');
   const headNums = headRow.append('div').style('display', 'flex').style('align-items', 'flex-start').style('gap', '14px');
-  const PLAN_W = 172, PLAN_H = 64;
-  const planSvg = headRow.append('svg').attr('width', PLAN_W).attr('height', PLAN_H).attr('aria-hidden', true)
-    .style('margin-left', 'auto').style('flex', 'none').style('display', 'block').style('overflow', 'visible');
+  const PLAN_W = 188, PLAN_H = 64, PLAN_TX = 72;          // squares up to 62 px wide; the words start at x = 72
+  const planWrap = headRow.append('div').style('margin-left', 'auto').style('flex', 'none').style('position', 'relative')
+    .style('width', `${PLAN_W}px`).style('height', `${PLAN_H}px`);
+  const planSvg = planWrap.append('svg').attr('width', PLAN_W).attr('height', PLAN_H).attr('aria-hidden', true)
+    .style('display', 'block').style('overflow', 'visible');
+  // The floor plan folds away with its own title; its space stays, so nothing else moves.
+  let planOn = true;
+  const planTitle = () => `<span style="display:inline-block;width:12px;color:${theme.quiet}">${planOn ? '▾' : '▸'}</span>The home it buys`;
+  const planToggle = planWrap.append('button').attr('type', 'button').attr('aria-expanded', 'true')
+    .attr('title', 'Show or hide the floor plan')
+    .style('position', 'absolute').style('left', `${PLAN_TX}px`).style('top', '-2px').style('padding', '0')
+    .style('border', '0').style('background', 'none').style('cursor', 'pointer').style('color', theme.ink)
+    .style('font', `700 11px ${theme.font}`).style('white-space', 'nowrap')
+    .html(planTitle())
+    .on('click', () => {
+      planOn = !planOn;
+      planSvg.style('visibility', planOn ? 'visible' : 'hidden');
+      planToggle.attr('aria-expanded', String(planOn)).html(planTitle());
+    });
   const headFoot = headline.append('div');
 
   // 2. Two filters, each under a plain label
@@ -438,39 +510,47 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const usedH = d3.sum(kids, n => n.getBoundingClientRect().height) + 12 * kids.length - 6 * 3;
   const chartH = Math.max(220, Math.min(440, panelH - usedH));
   const chart = chartBox.append('svg').attr('width', CW).attr('height', chartH).style('display', 'block').style('overflow', 'visible');
-  const cm = { l: 30, r: 16, t: 18 };
-  const plotB = chartH - 34;
-  const cx = d3.scaleLog().domain([BUDGET_MIN, BUDGET_MAX]).range([cm.l, CW - cm.r]).clamp(true);
-  const cy = d3.scaleLinear().range([plotB, cm.t]);
-  const cdefs = chart.append('defs');
-  cdefs.append('marker').attr('id', 'vb-arrow').attr('viewBox', '0 0 10 10').attr('refX', 9).attr('refY', 5)
-    .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto-start-reverse')
-    .append('path').attr('d', 'M0,1L9,5L0,9z').attr('fill', theme.ink);
+  const cm = { l: 34, r: 118, t: 24 };                 // the right margin holds the line names
+  const plotB = chartH - 24;
+  const yx = d3.scaleLinear().domain([YEARS[0], YEARS[YEARS.length - 1]]).range([cm.l + 8, CW - cm.r - 8]);
+  const ym = d3.scaleLinear().range([plotB, cm.t]);
+  const halfStep = (yx(YEARS[0] + 1) - yx(YEARS[0])) / 2;
+  // dark = near Downtown, light = far out (an order, so lightness carries it); coral stays for the clicked place
+  const RING_COL = [theme.ink, '#4a78a8', '#a6bbd1'], RING_TEXT = [theme.ink, '#3f6a96', '#6a86a3'];
   const gGrid = chart.append('g').attr('pointer-events', 'none');
-  const plotBg = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.l - cm.r)
-    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'ew-resize');
-  const band = chart.append('path').attr('fill', theme.depth.shallow).attr('fill-opacity', 0.14).attr('pointer-events', 'none');
-  const gLines = chart.append('g');
-  const budgetLine = chart.append('line').attr('y1', cm.t - 4).attr('y2', plotB)
-    .attr('stroke', theme.ink).attr('stroke-opacity', 0.55).attr('stroke-width', 1).attr('pointer-events', 'none');
-  const hoverLine = chart.append('line').attr('y1', cm.t - 4).attr('y2', plotB).attr('stroke', theme.ink)
-    .attr('stroke-opacity', 0.35).attr('stroke-dasharray', '3 3').attr('pointer-events', 'none').attr('opacity', 0);
-  const hoverLab = chart.append('text').attr('y', cm.t - 6).attr('fill', theme.ink).attr('paint-order', 'stroke')
-    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `600 11px ${theme.font}`).attr('pointer-events', 'none').attr('opacity', 0);
-  const gEq = chart.append('g');
-  const gDots = chart.append('g').attr('pointer-events', 'none');
-  const gTrace = chart.append('g').attr('pointer-events', 'none');     // the clicked neighbourhood, on the budget axis
-  const gHot = chart.append('g');                                      // the two points worth a label
-  const curvePreview = chart.append('path').attr('fill', 'none').attr('stroke-width', 2).attr('stroke-dasharray', '5 4')
-    .attr('pointer-events', 'none').attr('opacity', 0);               // a period button's line, while hovered
-  const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];
-  chart.append('g').attr('pointer-events', 'none').selectAll('text').data(tickVals).join('text')
-    .attr('x', v => cx(v)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
-    .style('font-size', '10.5px').text(v => short$(v));
-  chart.append('text').attr('x', CW - cm.r).attr('y', plotB + 30).attr('text-anchor', 'end').attr('fill', theme.quiet)
-    .style('font-size', '10.5px').attr('pointer-events', 'none').text('budget (AED) →');
-  const step = d3.line().curve(d3.curveStepAfter).x(d => cx(d[0])).y(d => cy(d[1]));
-  const stepArea = d3.area().curve(d3.curveStepAfter).x(d => cx(d[0])).y0(d => cy(d[1])).y1(d => cy(d[2]));
+  const periodBand = chart.append('rect').attr('y', cm.t).attr('height', plotB - cm.t).attr('fill', theme.ink)
+    .attr('fill-opacity', 0.05).attr('pointer-events', 'none');
+  const bandFor = p => { const [a, b] = R.PERIODS[p]; periodBand.attr('x', yx(a) - halfStep).attr('width', yx(b) - yx(a) + 2 * halfStep); };
+  const sandBg = chart.append('rect').attr('x', cm.l).attr('width', CW - cm.r - cm.l).attr('fill', '#efe3c8')
+    .attr('fill-opacity', 0.28).attr('pointer-events', 'none');
+  const seaBg = chart.append('rect').attr('x', cm.l).attr('width', CW - cm.r - cm.l).attr('fill', theme.depth.shallow)
+    .attr('fill-opacity', 0.2).attr('pointer-events', 'none');
+  const waterLine = chart.append('line').attr('x1', cm.l).attr('x2', CW - cm.r).attr('stroke', theme.depth.deep)
+    .attr('stroke-width', 1.5).attr('pointer-events', 'none');
+  const waterLab = chart.append('text').attr('x', cm.l + 5).attr('fill', theme.depth.deep).attr('paint-order', 'stroke')
+    .attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `600 10.5px ${theme.font}`).attr('pointer-events', 'none');
+  const gRingLines = chart.append('g').attr('pointer-events', 'none');
+  const selPath = chart.append('path').attr('fill', 'none').attr('stroke', theme.accent).attr('stroke-width', 2.2)
+    .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round').attr('pointer-events', 'none');
+  const gUnder = chart.append('g').attr('pointer-events', 'none');      // where a ring went under, and when
+  const gPeak = chart.append('g').attr('pointer-events', 'none');       // the one peak worth naming
+  const gHover = chart.append('g').attr('pointer-events', 'none').attr('opacity', 0);
+  const hoverRule = gHover.append('line').attr('y1', cm.t).attr('y2', plotB).attr('stroke', theme.ink)
+    .attr('stroke-opacity', 0.3).attr('stroke-dasharray', '3 3');
+  const hoverDot = gHover.append('circle').attr('r', 4.5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+  const hoverLab = gHover.append('text').attr('y', cm.t - 9).attr('fill', theme.ink).attr('paint-order', 'stroke')
+    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `700 11px ${theme.font}`);
+  const plotHit = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.r - cm.l)
+    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
+  const gEnd = chart.append('g');                                       // the line names, at the right
+  chart.append('g').attr('pointer-events', 'none').selectAll('text').data(YEARS).join('text')
+    .attr('x', y => yx(y)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').text(y => `’${String(y).slice(2)}${y === PARTIAL_YEAR ? '*' : ''}`);
+  chart.append('text').attr('x', cm.l - 6).attr('y', cm.t - 9).attr('text-anchor', 'end').attr('fill', theme.quiet)
+    .style('font-size', '10.5px').attr('pointer-events', 'none').text('m²');
+  const lineOf = d3.line().defined(d => d.v != null).x(d => yx(d.y)).y(d => ym(d.v)).curve(d3.curveMonotoneX);
+
+  const tickVals = [400e3, 600e3, 800e3, 1e6, 1.5e6, 2e6, 3e6, 4e6];   // the budget bar's labels
 
   // ---------- your budget: a bar right on top of the map ----------
   // Same log scale as the chart. Each notch is one counted neighbourhood at its typical price in the
@@ -577,7 +657,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     .on('mouseenter', (event, m) => { if (cur && m !== cur.mode) preview(statsFor(cur.period, { ...cur, mode: m })); })
     .on('mouseleave', endPreview);
   function preview(Sp) { previewPath.attr('d', path(coastFor(Sp))).attr('opacity', 1); coastPath.attr('opacity', 0.25); }
-  function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); curvePreview.attr('opacity', 0); }
+  function endPreview() { previewPath.attr('opacity', 0); coastPath.attr('opacity', 1); if (cur) bandFor(cur.period); }
 
   // Budget: drag the knob or anywhere on the bar above the map (or in the reach chart); click to jump;
   // arrow keys on the knob. While dragging, everything follows the pointer exactly; the budget sent is rounded.
@@ -598,15 +678,43 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     });
   const jumpOn = (sc, node) => event => { if (cur) ev.emit('budget', roundBudget(budgetAt(sc, d3.pointer(event, node)[0]))); };
   sHit.call(dragOn(barX, ssvg.node())).on('click', jumpOn(barX, ssvg.node()));
-  plotBg.call(dragOn(cx, chart.node())).on('click', jumpOn(cx, chart.node()))
-    .on('mousemove', event => {
-      if (dragging) { hoverLine.attr('opacity', 0); hoverLab.attr('opacity', 0); return; }
-      const x = clampTo(cx, d3.pointer(event, chart.node())[0]);
-      hoverLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
-      hoverLab.attr('x', x).attr('text-anchor', x > CW - 120 ? 'end' : x < 90 ? 'start' : 'middle')
-        .text(`Click to set ${aed(roundBudget(cx.invert(x)))}`).attr('opacity', 1);
+  // The line chart: hover a year to read the nearest line there (the floor plan shows that home); hover a
+  // ring (or its name) to outline its neighbourhoods on the map; click a year to show its period on the map.
+  const gRingMarks = top.append('g').attr('pointer-events', 'none');
+  function outlineRing(i) {
+    const members = i == null ? [] : RINGS[i].members.filter(c => byComm.has(c));
+    gRingMarks.selectAll('path').data(members, c => c).join('path').attr('d', c => path(byComm.get(c)))
+      .attr('fill', theme.ink).attr('fill-opacity', 0.08).attr('stroke', theme.ink).attr('stroke-width', 1.6)
+      .attr('stroke-dasharray', '4 2');
+  }
+  const yearAt = event => Math.max(YEARS[0], Math.min(YEARS[YEARS.length - 1], Math.round(yx.invert(d3.pointer(event, chart.node())[0]))));
+  plotHit.on('mousemove', event => {
+    if (!cur || !ringView) return;
+    const y = yearAt(event), my = d3.pointer(event, chart.node())[1];
+    let best = null;
+    ringView.lines.forEach(L => {
+      const d = L.pts.find(q => q.y === y);
+      if (d && d.v != null) { const dy = Math.abs(ym(d.v) - my); if (!best || dy < best.dy) best = { L, d, dy }; }
+    });
+    if (!best) { gHover.attr('opacity', 0); return; }
+    hoverRule.attr('x1', yx(y)).attr('x2', yx(y));
+    hoverDot.attr('cx', yx(y)).attr('cy', ym(best.d.v)).attr('fill', best.L.col);
+    const txt = `${best.L.label}, ${y}${y === PARTIAL_YEAR ? ' (Jan–Aug)' : ''}: ${Math.round(best.d.v)} m²`;
+    const w = textW(txt, 11, 700);
+    hoverLab.attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, yx(y) - w / 2))).text(txt);
+    gHover.attr('opacity', 1); gPeak.attr('opacity', 0);
+    outlineRing(best.L.ring);
+    renderPlan({ a: best.d.v, aText: `in ${y}${y === PARTIAL_YEAR ? '*' : ''}`, z: best.L.now, zText: 'now', where: best.L.where });
+  })
+    .on('mouseleave', () => {
+      gHover.attr('opacity', 0); gPeak.attr('opacity', 1); outlineRing(null);
+      if (cur && C) drawPlan(cur, selectedOf(cur));
     })
-    .on('mouseleave', () => { hoverLine.attr('opacity', 0); hoverLab.attr('opacity', 0); });
+    .on('click', event => {
+      if (!cur) return;
+      const y = yearAt(event), p = PERIOD_KEYS.find(k => y >= R.PERIODS[k][0] && y <= R.PERIODS[k][1]);
+      if (p && p !== cur.period) ev.emit('period', p);
+    });
   knob.call(dragOn(barX, ssvg.node())).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
@@ -709,7 +817,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     headLead.html(lead); headNums.html(nums); headFoot.html(foot);
     describe(s.size, homeWord());
     // The "why" (off-plan rose from 5 to 7 in 10 sales, at about 1.5x resale) is said in the talk, not shown.
-    chartHead.html(`Neighbourhoods within reach, by budget <span style="font-weight:400;color:${theme.quiet}">· click to set your budget</span>`);
+    chartHead.html(`The home your budget buys, by distance from Downtown <span style="font-weight:400;color:${theme.quiet}">· hover a line</span>`);
   }
 
   function drawLegend(s, same) {
@@ -751,148 +859,48 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   }
 
   function drawCurve(s, same) {
-    const set = C.set, n = C.n;
-    cy.domain([0, Math.max(1, n)]);
+    // Each period's typical prices for the counted neighbourhoods: the budget bar's notches, the period
+    // buttons' prices and the map's preview read these.
     periodsInfo = PERIOD_KEYS.map(p => {
       const Sp = p === s.period ? S : p === s.thenPeriod ? Sthen : statsFor(p, s);
-      const edges = set.filter(c => charted(Sp.get(c))).map(c => Sp.get(c).edge).sort(d3.ascending);
-      const pts = [[BUDGET_MIN, d3.bisectRight(edges, BUDGET_MIN)]];
-      edges.forEach((e, i) => { if (e > BUDGET_MIN && e < BUDGET_MAX) pts.push([e, i + 1]); });
-      pts.push([BUDGET_MAX, d3.bisectRight(edges, BUDGET_MAX)]);
-      return { p, pts, edges, Sp };
+      const edges = C.set.filter(c => charted(Sp.get(c))).map(c => Sp.get(c).edge).sort(d3.ascending);
+      return { p, edges, Sp };
     }).filter(d => d.edges.length);
-    const role = p => p === s.period ? 'now' : (!same && p === s.thenPeriod) ? 'then' : 'other';
-    const widthOf = d => ({ now: 3, then: 2.4, other: 1.1 })[role(d.p)];
-
-    const yt = cy.ticks(4).filter(v => Number.isInteger(v) && v > 0);
-    gGrid.selectAll('line').data(yt).join('line').attr('x1', cm.l).attr('x2', CW - cm.r)
-      .attr('y1', v => cy(v)).attr('y2', v => cy(v)).attr('stroke', theme.grid);
-    gGrid.selectAll('text').data(yt).join('text').attr('x', cm.l - 6).attr('y', v => cy(v)).attr('dy', '0.35em')
-      .attr('text-anchor', 'end').attr('fill', theme.quiet).style('font-size', '10.5px').text(v => v);
-
-    // the reach lost between then and now, shaded
-    const nowI = periodsInfo.find(d => d.p === s.period), thenI = same ? null : periodsInfo.find(d => d.p === s.thenPeriod);
-    if (nowI && thenI) {
-      const at = (d, b) => d3.bisectRight(d.edges, b);
-      const xs = [...new Set([BUDGET_MIN, ...nowI.edges, ...thenI.edges, BUDGET_MAX])]
-        .filter(b => b >= BUDGET_MIN && b <= BUDGET_MAX).sort(d3.ascending);
-      band.attr('d', stepArea(xs.map(b => [b, at(nowI, b), Math.max(at(nowI, b), at(thenI, b))]))).attr('opacity', 1);
-    } else band.attr('opacity', 0);
-
-    const order = { other: 0, then: 1, now: 2 };
-    const lines = gLines.selectAll('g').data(periodsInfo.filter(d => role(d.p) !== 'other')
-      .sort((a, b) => order[role(a.p)] - order[role(b.p)]), d => d.p)
-      .join(enter => {
-        const g = enter.append('g').attr('pointer-events', 'none');
-        g.append('path').attr('class', 'ln').attr('fill', 'none').attr('stroke-linejoin', 'round');
-        g.append('path').attr('class', 'hit').attr('fill', 'none').attr('stroke', 'transparent').attr('stroke-width', 10);
-        return g;
-      }).order();
-    lines.select('.ln').attr('stroke', d => pcol(d.p)).attr('stroke-width', widthOf).attr('d', d => step(d.pts));
-    lines.select('.hit').attr('d', d => step(d.pts));
-    drawHotspots(s, nowI, thenI);
-
     drawNotches(s);
     placeBudget(s.budget, !!prev && !dragging);
     drawTrace(cur);
   }
 
-  // The niche: homes shrink. The space your budget buys (budget / price per m²), then vs now, drawn as two
-  // nested floor plans to the same scale (area = m²). With nothing clicked it is the typical (middle)
-  // neighbourhood; click a neighbourhood and it is that one. It sits in the chart's top-left corner, which
-  // the curves can never reach.
-  function drawPlan(s, c) {
+  // The niche: homes shrink. The space your budget buys (budget / price per m²) as two nested floor plans
+  // to the same scale (area = m²): then (dashed) and now (filled). By default: 2015–17 vs the period on the
+  // map, for the clicked neighbourhood or the typical (middle) one. Hovering the line chart shows that
+  // line's year against its "now".
+  function renderPlan({ a, aText, z, zText, where }) {
     planSvg.selectAll('*').remove();
-    const same = s.thenPeriod === s.period;
-    const perM2 = Sp => c ? (charted(Sp.get(c)) ? Sp.get(c).edge / s.size : null) : d3.median(C.set, x => Sp.get(x).edge) / s.size;
-    const m2 = Sp => { const v = perM2(Sp); return v ? Math.round(s.budget / v) : null; };
-    const a = same ? null : m2(Sthen), z = m2(S);
     if (z == null) return;
     // One fixed scale up to about 200 m², so sizes compare across budgets; bigger homes shrink the scale,
     // and then a dotted typical-home outline appears so the change of scale is visible.
+    const size = cur ? cur.size : 80;
     const K = 4.4, big = Math.max(a || 0, z), k = Math.min(K, (PLAN_H - 2) / Math.sqrt(big)), side = v => k * Math.sqrt(v);
     const x0 = 1, base = PLAN_H - 1;
     if (a != null) planSvg.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
       .attr('fill', '#f1f4f8').attr('stroke', '#8493a5').attr('stroke-width', 1.2).attr('stroke-dasharray', '3 2');
     planSvg.append('rect').attr('x', x0).attr('y', base - side(z)).attr('width', side(z)).attr('height', side(z))
       .attr('fill', theme.depth.deep).attr('fill-opacity', 0.88);
-    if (k < K) planSvg.append('rect').attr('x', x0).attr('y', base - side(s.size)).attr('width', side(s.size)).attr('height', side(s.size))
+    if (k < K) planSvg.append('rect').attr('x', x0).attr('y', base - side(size)).attr('width', side(size)).attr('height', side(size))
       .attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1.2).attr('stroke-dasharray', '1 2');
-    const lx = x0 + side(big) + 9, where = c ? `in ${shortName(nameOf(c))}` : 'in a typical area';
+    const lx = PLAN_TX + 12;
     const line = (y, t, font, fill) => planSvg.append('text').attr('x', lx).attr('y', y).attr('fill', fill).style('font', `${font} ${theme.font}`).text(t);
-    line(11, 'The home it buys', '700 11px', theme.ink);
-    if (a != null) line(29, `${a} m² in ${periodLabel(s.thenPeriod)}`, '600 11px', '#5f6f80');
-    line(a != null ? 46 : 32, `${z} m²${same ? ` in ${periodLabel(s.period)}` : ' now'}`, '800 13px', theme.depth.deep);
-    line(62, where.length > 24 ? where.slice(0, 23) + '…' : where, '500 11px', theme.quiet);
+    if (a != null) line(29, `${Math.round(a)} m² ${aText}`, '600 11px', '#5f6f80');
+    line(a != null ? 46 : 33, `${Math.round(z)} m² ${zText}`, '800 13px', theme.depth.deep);
+    line(62, where.length > 20 ? where.slice(0, 19) + '…' : where, '500 11px', theme.quiet);
   }
-
-  // Two points on the curves that say something; nothing else on the lines reacts.
-  //  * The biggest loss: the budget at which the most neighbourhoods fell out of reach between then and now.
-  //  * The one that got cheaper: the cheapest neighbourhood now, shown only if it costs less than it did then.
-  // Hover a ring to read it; click to go there (the budget, or the neighbourhood).
-  function drawHotspots(s, nowI, thenI) {
-    const hots = [];
-    if (nowI && thenI) {
-      const at = (d, b) => d3.bisectRight(d.edges, b);
-      let best = null;
-      for (const b of [...nowI.edges, ...thenI.edges]) {
-        if (b < BUDGET_MIN || b > BUDGET_MAX) continue;
-        const a = at(thenI, b), z = at(nowI, b);
-        if (!best || a - z > best.a - best.z) best = { b, a, z };
-      }
-      if (best && best.a - best.z >= 3) hots.push({ x: cx(best.b), y: cy((best.a + best.z) / 2), act: () => ev.emit('budget', ceilBudget(best.b)),
-        label: `Biggest drop: ${best.a} → ${best.z}`,
-        title: `At ${aed(ceilBudget(best.b))}: ${best.a} neighbourhoods in ${periodLabel(s.thenPeriod)}, ${best.z} in ${periodLabel(s.period)}. Click to set your budget here.` });
-      const c0 = d3.least(C.set, c => S.get(c).edge), e0 = S.get(c0).edge, eThen = Sthen.get(c0).edge;
-      const nCheaper = C.set.filter(c => S.get(c).edge < Sthen.get(c).edge).length;
-      if (e0 < eThen && e0 >= BUDGET_MIN && e0 <= BUDGET_MAX) hots.push({ x: cx(e0), y: cy(1), c: c0, act: () => ev.emit('select', c0),
-        label: `${nCheaper === 1 ? 'Only one got cheaper' : `${nCheaper} got cheaper, like`}: ${shortName(nameOf(c0))}`,
-        title: `Typical ${s.size} m²: ${aed(eThen)} in ${periodLabel(s.thenPeriod)}, ${aed(e0)} now. Click to find it on the map.` });
-    }
-    const g = gHot.selectAll('g').data(hots, d => d.label.slice(0, 8)).join(enter => {
-      const h = enter.append('g').style('cursor', 'pointer');
-      h.append('title');
-      h.append('circle').attr('class', 'halo').attr('r', 11).attr('fill', '#ffffff').attr('fill-opacity', 0.001);
-      h.append('circle').attr('r', 6.5).attr('fill', '#ffffff').attr('stroke', theme.ink).attr('stroke-width', 1.6);
-      h.append('circle').attr('r', 2.2).attr('fill', theme.ink);
-      h.append('text').attr('class', 'hot-lab').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 4)
-        .attr('stroke-linejoin', 'round').attr('fill', theme.ink).style('font', `600 11px ${theme.font}`);
-      return h;
-    }).attr('transform', d => `translate(${d.x},${d.y})`);
-    g.select('title').text(d => d.title);
-    g.select('.hot-lab').text(d => d.label);
-    g.on('mouseenter', (event, d) => { if (d.c) ev.emit('hover', d.c); })
-      .on('mouseleave', (event, d) => { if (d.c && cur && cur.hovered) ev.emit('hover', null); })
-      .on('click', (event, d) => { event.stopPropagation(); d.act(); });
-  }
-
-  // Labels never sit on top of each other. The arrow, the clicked neighbourhood and the budget-line
-  // numbers come first; each ring label tries a few spots around its ring and is hidden only if none is
-  // free (the ring stays). Runs again once the budget-line numbers finish moving.
-  const SPOTS = { drop: [['end', -12, 4], ['end', -12, 18], ['start', 12, 18], ['start', 12, 4], ['end', -12, -10], ['start', 12, -10]],
-    cheap: [['start', 12, -10], ['start', 12, 4], ['start', 12, -24], ['start', 12, -38], ['end', -12, -10]] };
-  let declutterTimer = null;
-  function declutter() {
-    const boxes = [];
-    const add = sel => sel.each(function () { const b = this.getBBox(); if (b.width) boxes.push({ x: b.x - 2, y: b.y - 1, width: b.width + 4, height: b.height + 2 }); });
-    add(gEq.selectAll('text')); add(gTrace.selectAll('text')); add(gDots.selectAll('text'));
-    gHot.selectAll('g').each(function (d) {
-      const t = d3.select(this).select('.hot-lab'), node = t.node();
-      if (!node) return;
-      let placed = false;
-      for (const [anchor, dx, dy] of SPOTS[d.c ? 'cheap' : 'drop']) {
-        t.attr('text-anchor', anchor).attr('x', dx).attr('y', dy);
-        const b = node.getBBox(), r = { x: b.x + d.x, y: b.y + d.y, width: b.width, height: b.height };
-        const inside = r.x >= 0 && r.x + r.width <= CW && r.y >= 0 && r.y + r.height <= plotB + 1;   // never on the axis numbers
-        const hit = boxes.some(o => r.x < o.x + o.width && o.x < r.x + r.width && r.y < o.y + o.height && o.y < r.y + r.height);
-        if (inside && !hit) { boxes.push(r); placed = true; break; }
-      }
-      t.attr('opacity', placed ? 1 : 0);
-    });
-  }
-  function declutterSoon(wait) {
-    declutter();
-    if (wait) { clearTimeout(declutterTimer); declutterTimer = setTimeout(declutter, wait); }
+  function drawPlan(s, c) {
+    const same = s.thenPeriod === s.period;
+    const perM2 = Sp => c ? (charted(Sp.get(c)) ? Sp.get(c).edge / s.size : null) : d3.median(C.set, x => Sp.get(x).edge) / s.size;
+    const m2 = Sp => { const v = perM2(Sp); return v ? Math.round(s.budget / v) : null; };
+    renderPlan({ a: same ? null : m2(Sthen), aText: `in ${periodLabel(s.thenPeriod)}`, z: m2(S),
+      zText: same ? `in ${periodLabel(s.period)}` : 'now', where: c ? `in ${shortName(nameOf(c))}` : 'in a typical area' });
   }
 
   function drawNotches(s) {
@@ -916,100 +924,135 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // Budget line, handle, the two dots (then, now) and the arrow to the budget that reaches as many now
   function placeBudget(b, animate, raw) {
     if (!cur || !C) return;
-    const v = raw ?? b, x = cx(v), xs = barX(v);
+    const v = raw ?? b, xs = barX(v);
     const t = animate && !reduceMotion ? d3.transition().duration(450).ease(d3.easeCubicOut) : null;
     const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
-    go(budgetLine).attr('x1', x).attr('x2', x);
     go(sFill).attr('width', Math.max(0, xs - barX.range()[0]));
     go(knob).attr('transform', `translate(${xs},${trackY})`);
     const label = aed(b);
     sVal.text(label);
     knob.attr('aria-valuenow', b).attr('aria-valuetext', label);
     colourNotches(b);
-
-    const same = cur.thenPeriod === cur.period;
-    const at = d => d ? d3.bisectRight(d.edges, b) : NaN;
-    const now = periodsInfo.find(d => d.p === cur.period), then = same ? null : periodsInfo.find(d => d.p === cur.thenPeriod);
-    const dots = [now && { k: 'now', v: at(now), p: cur.period }, then && { k: 'then', v: at(then), p: cur.thenPeriod }].filter(Boolean);
-    const leftSide = x > cm.l + 96;
-    const ys = dots.map(d => Math.min(cy(d.v), plotB - 9));      // keep the labels clear of the budget axis
-    if (ys.length === 2 && Math.abs(ys[0] - ys[1]) < 15) { const mid = (ys[0] + ys[1]) / 2, up = ys[1] <= ys[0] ? 1 : 0; ys[up] = mid - 8; ys[1 - up] = mid + 8; }
-    const sink = Math.max(...ys, 0) - (plotB - 9);                  // pulled apart near zero: lift both off the axis numbers
-    if (sink > 0) ys.forEach((v, i) => { ys[i] = v - sink; });
-    gDots.selectAll('g').data(dots, d => d.k).join(enter => {
-      const g = enter.append('g');
-      g.append('circle').attr('r', 5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-      g.append('text').attr('dy', '0.35em').attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-        .style('font', `700 ${theme.size.small}px ${theme.font}`);
-      return g;
-    }).each(function (d, i) {
-      const g = d3.select(this);
-      go(g.select('circle')).attr('cx', x).attr('cy', cy(d.v)).attr('fill', pcol(d.p));
-      go(g.select('text')).attr('x', leftSide ? x - 10 : x + 10).attr('y', ys[i]);
-      g.select('text').attr('text-anchor', leftSide ? 'end' : 'start').attr('fill', d.k === 'now' ? theme.depth.deep : '#5f6f80')
-        .text(`${periodLabel(d.p)}: ${d.v}`);
-    });
-
-    // the arrow: how much more money reaches as many neighbourhoods now as your budget did then
-    gEq.selectAll('*').remove();
-    if (then && now) {
-      const k = at(then);
-      if (k >= 1 && k <= now.edges.length && at(now) !== k) {
-        const eq = ceilBudget(now.edges[k - 1]), x2 = cx(eq), y2 = cy(k);
-        if (Math.abs(x2 - x) > 24) {
-          const more = eq > b;
-          gEq.append('line').attr('x1', x + (more ? 7 : -7)).attr('x2', x2 + (more ? -4 : 4)).attr('y1', y2).attr('y2', y2)
-            .attr('stroke', theme.ink).attr('stroke-width', 1.4).attr('marker-end', 'url(#vb-arrow)').attr('pointer-events', 'none');
-          const lab = gEq.append('g').style('cursor', 'pointer').on('click', () => ev.emit('budget', eq));
-          lab.append('title').text(`Set your budget to ${aed(eq)}`);
-          const fitsRight = more && x + 8 + 150 < CW - cm.r;
-          lab.append('text').attr('x', more ? (fitsRight ? x + 8 : x2) : x - 8).attr('y', y2 - 8)
-            .attr('text-anchor', more ? (fitsRight ? 'start' : 'end') : 'end')
-            .attr('fill', theme.ink).attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5)
-            .style('font', `700 ${theme.size.small}px ${theme.font}`)
-            .text(more ? `+${short$(eq - b)} AED for the same ${k}` : `${short$(b - eq)} AED less for the same ${k}`);
-        }
-      }
-    }
-    declutterSoon(t ? 480 : 0);
+    drawRings(cur, v, t);
   }
 
-  // The clicked neighbourhood on the chart: its typical price then (hollow) and now (filled) as two marks
-  // on the budget axis, so you see it move past your budget line. The chips above show its price in every
-  // period (with nothing clicked, the typical price of the middle neighbourhood).
+  // The line chart: the home your budget buys each year (m² = budget × m² per AED), one line per ring and a
+  // coral line for the clicked neighbourhood. The waterline is the typical home (80 m²): below it, that
+  // ring's typical neighbourhood is water on the map. Marked live from the data: where each ring went under
+  // for good, and the one peak worth naming.
+  let ringView = null;
+  function drawRings(s, B, t) {
+    const { rings } = yearData(s), size = s.size;
+    const go = sel => t ? sel.interrupt().transition(t) : sel.interrupt();
+    const periodVal = pts => {
+      const [p0, p1] = R.PERIODS[s.period];
+      const v = d3.median(pts.filter(d => d.y >= p0 && d.y <= p1 && d.v != null), d => d.v);
+      return v == null ? null : v;
+    };
+    const lines = rings.map((r, i) => {
+      const pts = r.ys.map(d => ({ y: d.y, v: d.f == null ? null : d.f * B }));
+      return { key: r.key, name: r.name, label: `${r.name} ring${r.km ? ` (${r.km})` : ''}`, col: RING_COL[i], text: RING_TEXT[i],
+        ring: i, pts, now: periodVal(pts), where: `${r.name.toLowerCase()} ring` };
+    });
+    const c = selectedOf(s);
+    let sel = null;
+    if (c) {
+      const pts = commYearly(s, c).map(d => ({ y: d.y, v: d.f == null ? null : d.f * B }));
+      const nm = shortName(nameOf(c));
+      if (pts.some(d => d.v != null)) sel = { key: 'sel', name: nm.length > 14 ? nm.slice(0, 13) + '…' : nm, label: nm,
+        col: theme.accent, text: theme.accent, ring: null, pts, now: periodVal(pts), where: `in ${nm}` };
+    }
+    const all = sel ? [...lines, sel] : lines;
+    ringView = { lines: all };
+
+    const vmax = d3.max(all, L => d3.max(L.pts, d => d.v)) || size;
+    ym.domain([0, Math.max(size * 1.3, vmax * 1.18)]).nice(4);
+    const yt = ym.ticks(4).filter(v => v > 0 && ym(v) > cm.t + 8);   // none right under the "m²" label
+    gGrid.selectAll('line').data(yt, v => v).join('line').attr('x1', cm.l).attr('x2', CW - cm.r).attr('stroke', theme.grid)
+      .attr('y1', v => ym(v)).attr('y2', v => ym(v));
+    gGrid.selectAll('text').data(yt, v => v).join('text').attr('x', cm.l - 6).attr('dy', '0.35em').attr('text-anchor', 'end')
+      .attr('fill', theme.quiet).style('font-size', '10.5px').text(v => v).attr('y', v => ym(v));
+
+    bandFor(s.period);
+    const wy = ym(size);
+    go(sandBg).attr('y', cm.t).attr('height', Math.max(0, wy - cm.t));
+    go(seaBg).attr('y', wy).attr('height', Math.max(0, plotB - wy));
+    go(waterLine).attr('y1', wy).attr('y2', wy);
+    waterLab.text(`${size} m²: a typical flat`);
+    go(waterLab).attr('y', wy - 5);
+
+    gRingLines.selectAll('path').data(lines, L => L.key).join('path').attr('fill', 'none').attr('stroke-linejoin', 'round')
+      .attr('stroke-linecap', 'round').attr('stroke', L => L.col).attr('stroke-width', 2.5)
+      .call(p => go(p).attr('d', L => lineOf(L.pts)));
+    if (sel) { if (!selPath.attr('d')) selPath.attr('d', lineOf(sel.pts)); selPath.attr('opacity', 1); go(selPath).attr('d', lineOf(sel.pts)); }
+    else selPath.interrupt().attr('opacity', 0).attr('d', null);
+
+    // went under for good: the last time a ring's line crosses the waterline and stays under to the end,
+    // after at least two years in a row above it (a one-year blip above the line is not "went under")
+    const unders = [];
+    lines.forEach(L => {
+      const P = L.pts.filter(d => d.v != null);
+      if (!P.length || P[P.length - 1].v >= size) return;
+      let j = P.length - 1;
+      while (j >= 0 && P[j].v < size) j--;
+      if (j < 1 || P[j - 1].v < size) return;            // never (or only briefly) above the line: nothing to mark
+      const a = P[j], z = P[j + 1], f = (a.v - size) / (a.v - z.v);
+      unders.push({ L, x: yx(a.y + f * (z.y - a.y)), year: z.y });
+    });
+    gUnder.selectAll('circle').data(unders, d => d.L.key).join('circle').attr('r', 4).attr('stroke', '#ffffff')
+      .attr('stroke-width', 1.5).attr('fill', d => d.L.col).attr('cx', d => d.x).attr('cy', wy);
+    const byYear = d3.groups(unders, d => d.year).map(([year, us]) => ({ year, x: d3.mean(us, d => d.x) })).sort((a, b) => a.x - b.x);
+    const below = wy + 30 < plotB;
+    gUnder.selectAll('text').data(byYear, d => d.year).join('text').attr('text-anchor', 'middle').attr('fill', theme.depth.deep)
+      .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3).style('font', `700 10.5px ${theme.font}`)
+      .text(d => `under in ${d.year}`)
+      .attr('x', d => Math.max(cm.l + 34, Math.min(CW - cm.r - 34, d.x)))
+      .attr('y', (d, i) => below ? wy + 15 + (i % 2) * 13 : wy - 9 - (i % 2) * 13);
+
+    // the one peak worth naming: a ring that rose 10%+ above its start, then lost a quarter or more
+    let peak = null;
+    lines.forEach(L => {
+      const P = L.pts.filter(d => d.v != null);
+      if (P.length < 4) return;
+      const hi = d3.greatest(P, d => d.v), first = P[0], last = P[P.length - 1];
+      if (hi === first || hi === last) return;
+      const drop = (hi.v - last.v) / hi.v, rise = (hi.v - first.v) / first.v;
+      if (drop >= 0.25 && rise >= 0.1 && (!peak || drop > peak.drop)) peak = { L, d: hi, drop };
+    });
+    gPeak.selectAll('*').remove();
+    if (peak) {
+      const px = yx(peak.d.y), py = ym(peak.d.v), txt = `${peak.L.name}, ${peak.d.y}: ${Math.round(peak.d.v)} m²`, w = textW(txt, 11, 700);
+      gPeak.append('circle').attr('cx', px).attr('cy', py).attr('r', 4).attr('fill', peak.L.col).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+      gPeak.append('text').attr('x', Math.max(cm.l, Math.min(CW - cm.r - w, px - w / 2))).attr('y', py - 9).attr('fill', peak.L.text)
+        .attr('paint-order', 'stroke').attr('stroke', '#ffffff').attr('stroke-width', 3.5).style('font', `700 11px ${theme.font}`).text(txt);
+    }
+
+    // names at the right, spread so they never overlap
+    const ends = all.map(L => { const P = L.pts.filter(d => d.v != null), e = P[P.length - 1]; return e && { L, y: ym(e.v), v: e.v }; })
+      .filter(Boolean).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+    const over = ends.length ? ends[ends.length - 1].y - (plotB + 4) : 0;
+    if (over > 0) ends.forEach(e => { e.y -= over; });
+    gEnd.selectAll('text').data(ends, e => e.L.key).join(enter => enter.append('text').attr('y', e => e.y))
+      .attr('x', CW - cm.r + 8).attr('dy', '0.35em').attr('fill', e => e.L.text)
+      .style('font', e => `${e.L.ring == null ? 700 : 600} 11px ${theme.font}`).style('cursor', 'default')
+      .text(e => `${e.L.name} · ${Math.round(e.v)} m²`)
+      .on('mouseenter', (event, e) => outlineRing(e.L.ring)).on('mouseleave', () => outlineRing(null))
+      .call(p => go(p).attr('y', e => e.y))
+      .each(function (e) { d3.select(this).selectAll('title').data([0]).join('title').text(e.L.ring == null ? e.L.label : `${e.L.label}: ${RINGS[e.L.ring].members.length} neighbourhoods`); });
+  }
+
+  // The period buttons show the typical 80 m² price in each period (the clicked neighbourhood's, or the
+  // middle one's); the clicked neighbourhood also gets its own line in the line chart.
+  const selectedOf = s => s && s.selected && byComm.has(s.selected) && charted(S.get(s.selected)) ? s.selected : null;
   function drawTrace(s) {
     if (!s || !C || !periodsInfo.length) return;
-    const c = s.selected && byComm.has(s.selected) && charted(S.get(s.selected)) ? s.selected : null;
+    const c = selectedOf(s);
     const pts = periodsInfo.map(d => {
-      let e;
-      if (c) { const st = d.Sp.get(c); if (!charted(st)) return { p: d.p, e: null, n: st ? st.n : 0 }; e = st.edge; }
-      else e = d.edges[Math.ceil(d.edges.length / 2) - 1];
-      return { p: d.p, e, k: C.set.includes(c) || !c ? d3.bisectRight(d.edges, e) : null };
+      if (c) { const st = d.Sp.get(c); return { p: d.p, e: charted(st) ? st.edge : null }; }
+      return { p: d.p, e: d.edges[Math.ceil(d.edges.length / 2) - 1] };
     });
-    gTrace.selectAll('*').remove();
-    if (c) {
-      const same = s.thenPeriod === s.period;
-      const edgeIn = p => { const d = periodsInfo.find(x => x.p === p), st = d && d.Sp.get(c); return charted(st) ? st.edge : null; };
-      const eThen = same ? null : edgeIn(s.thenPeriod), eNow = edgeIn(s.period), yR = plotB - 8;
-      if (eThen != null && eNow != null && Math.abs(cx(eNow) - cx(eThen)) > 14) {
-        const dir = eNow > eThen ? 1 : -1;
-        gTrace.append('line').attr('x1', cx(eThen) + dir * 6).attr('x2', cx(eNow) - dir * 8).attr('y1', yR).attr('y2', yR)
-          .attr('stroke', theme.ink).attr('stroke-width', 1.4).attr('marker-end', 'url(#vb-arrow)');
-      }
-      if (eThen != null) gTrace.append('circle').attr('cx', cx(eThen)).attr('cy', yR).attr('r', 4.5)
-        .attr('fill', '#ffffff').attr('stroke', '#8493a5').attr('stroke-width', 1.8);
-      if (eNow != null) gTrace.append('circle').attr('cx', cx(eNow)).attr('cy', yR).attr('r', 5)
-        .attr('fill', theme.depth.deep).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-      const anchorE = eNow ?? eThen;
-      if (anchorE != null) {
-        const txt = `${shortName(nameOf(c))}: ${eThen != null ? `${short$(eThen)} → ` : ''}${eNow != null ? short$(eNow) : 'few sales now'}`;
-        const w = textW(txt, 11.5, 700), xa = cx(anchorE), left = Math.min(Math.max(xa - w / 2, cm.l), CW - cm.r - w);
-        gTrace.append('text').attr('x', left).attr('y', yR - 11).attr('fill', theme.ink).attr('paint-order', 'stroke')
-          .attr('stroke', '#ffffff').attr('stroke-width', 4).attr('stroke-linejoin', 'round')
-          .style('font', `700 11.5px ${theme.font}`).text(txt);
-      }
-    }
-    declutterSoon(0);
+    drawRings(s, s.budget, null);
 
     drawPlan(s, c);
 
@@ -1036,7 +1079,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
         const pi = periodsInfo.find(x => x.p === d.p);
         if (!pi || d.p === cur.period) return;
         preview(pi.Sp);
-        curvePreview.attr('d', step(pi.pts)).attr('stroke', pcol(pi.p)).attr('opacity', 1);
+        bandFor(d.p);
       })
       .on('mouseleave', endPreview)
       .each(function (d) {
@@ -1343,6 +1386,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     // for recording demos at a steady frame rate: replace the clock (null restores real time)
     _setClock: fn => { clock = fn; },
     // for tests and the referee script: the numbers this view shows
-    _debug: s => ({ comparable: reach(s), guess: { phase, truth, drawn: guessV.slice(), underLast, typical: typicalG } })
+    _debug: s => ({ comparable: reach(s),
+      rings: yearData(s).rings.map(r => ({ name: r.name, km: r.km, members: r.members.map(c => shortName(nameOf(c))),
+        m2: r.ys.map(d => d.f == null ? null : Math.round(d.f * s.budget)), n: r.ys.map(d => d.n) })),
+      guess: { phase, truth, drawn: guessV.slice(), underLast, typical: typicalG } })
   };
 }
