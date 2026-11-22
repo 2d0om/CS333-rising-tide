@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · final spacing pass · 2026-11-22';
+export const BUILD = 'View B · floor plan shows growth too, period named · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -934,21 +934,30 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   function renderPlan({ a, aText, z, zText, where }) {
     planSvg.selectAll('*').remove();
     if (z == null) return;
-    // One fixed scale up to about 200 m², so sizes compare across budgets; bigger homes shrink the scale,
+    // One fixed scale up to about 120 m², so sizes compare across budgets; bigger homes shrink the scale,
     // and then a dotted typical-home outline appears so the change of scale is visible.
     const size = cur ? cur.size : 80;
-    const K = 4.4, big = Math.max(a || 0, z), k = Math.min(K, (PLAN_H - 2) / Math.sqrt(big)), side = v => k * Math.sqrt(v);
+    const K = 5.6, big = Math.max(a || 0, z), k = Math.min(K, (PLAN_H - 2) / Math.sqrt(big)), side = v => k * Math.sqrt(v);
     const x0 = 1, base = PLAN_H - 1;
+    // then: a light ghost behind and a dashed outline on top, so it shows whether the home shrank or grew
     if (a != null) planSvg.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
-      .attr('fill', '#f1f4f8').attr('stroke', '#8493a5').attr('stroke-width', 1.2).attr('stroke-dasharray', '3 2');
+      .attr('fill', '#eef2f7');
     planSvg.append('rect').attr('x', x0).attr('y', base - side(z)).attr('width', side(z)).attr('height', side(z))
       .attr('fill', theme.depth.deep).attr('fill-opacity', 0.88);
+    if (a != null) planSvg.append('rect').attr('x', x0).attr('y', base - side(a)).attr('width', side(a)).attr('height', side(a))
+      .attr('fill', 'none').attr('stroke', '#5f6f80').attr('stroke-width', 1.2).attr('stroke-dasharray', '3 2');
+    // the change, written inside the filled square when it is big enough
+    if (a != null && side(z) >= 28) {
+      const d = z / a - 1, txt = Math.abs(d) < 0.03 ? 'same' : `${d > 0 ? '+' : '−'}${Math.round(Math.abs(d) * 100)}%`;
+      planSvg.append('text').attr('x', x0 + side(z) / 2).attr('y', base - side(z) / 2 + 4).attr('text-anchor', 'middle')
+        .attr('fill', '#ffffff').style('font', `700 10.5px ${theme.font}`).text(txt);
+    }
     if (k < K) planSvg.append('rect').attr('x', x0).attr('y', base - side(size)).attr('width', side(size)).attr('height', side(size))
       .attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1.2).attr('stroke-dasharray', '1 2');
     const lx = PLAN_TX + 12;
     const line = (y, t, font, fill) => planSvg.append('text').attr('x', lx).attr('y', y).attr('fill', fill).style('font', `${font} ${theme.font}`).text(t);
     if (a != null) line(29, `${Math.round(a)} m² ${aText}`, '600 11px', '#5f6f80');
-    line(a != null ? 46 : 33, `${Math.round(z)} m² ${zText}`, '800 13px', theme.depth.deep);
+    line(a != null ? 46 : 33, `${Math.round(z)} m² ${zText}`, '800 12px', theme.depth.deep);
     line(62, where.length > 20 ? where.slice(0, 19) + '…' : where, '500 11px', theme.quiet);
   }
   function drawPlan(s, c) {
@@ -956,7 +965,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     const perM2 = Sp => c ? (charted(Sp.get(c)) ? Sp.get(c).edge / s.size : null) : d3.median(C.set, x => Sp.get(x).edge) / s.size;
     const m2 = Sp => { const v = perM2(Sp); return v ? Math.round(s.budget / v) : null; };
     renderPlan({ a: same ? null : m2(Sthen), aText: `in ${periodLabel(s.thenPeriod)}`, z: m2(S),
-      zText: same ? `in ${periodLabel(s.period)}` : 'now', where: c ? `in ${shortName(nameOf(c))}` : 'in a typical area' });
+      zText: `in ${periodLabel(s.period)}`, where: c ? `in ${shortName(nameOf(c))}` : 'in a typical area' });
   }
 
   function drawNotches(s) {
