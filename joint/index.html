@@ -51,6 +51,22 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .veil em { position: relative; display: block; width: 120px; height: 2px; margin: 18px auto 0; border-radius: 2px; overflow: hidden; background: #e5e9ef; }
 .veil em::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--c); animation: run 1.1s ease-in-out infinite; }
 @keyframes run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+/* the opening: the four views dealt onto the table as cards, then the camera dives into the buyer's */
+#track.intro .card { cursor: pointer; border-radius: calc(12px / var(--s)); }
+#track.intro .veil b { font-size: calc(13px / var(--s)); margin-bottom: calc(6px / var(--s)); }
+#track.intro .veil span { font-size: calc(18px / var(--s)); line-height: 1.18; padding: 0 calc(14px / var(--s)); }
+#track.intro .veil em { width: calc(70px / var(--s)); height: calc(2px / var(--s)); margin-top: calc(11px / var(--s)); }
+#track.intro .card:hover .veil { background: #f6f8fb; }
+/* while the buyer's view loads, its card fills with sea */
+#track.intro .card.buyer .veil::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: linear-gradient(to top, rgba(94, 166, 228, .34), rgba(94, 166, 228, .1)); box-shadow: inset 0 calc(3px / var(--s)) 0 rgba(94, 166, 228, .55);
+  animation: fill 2.6s cubic-bezier(.3, .6, .3, 1) .5s forwards; }
+#track.intro .veil > div { position: relative; }
+@keyframes fill { to { height: 34%; } }
+#hint { position: fixed; left: 0; right: 0; bottom: 9%; margin: 0; text-align: center; color: var(--mist); font-size: 14px;
+  opacity: 0; transition: opacity .4s; pointer-events: none; }
+#lead { position: fixed; left: 0; right: 0; margin: 0; text-align: center; font: 600 22px var(--serif); color: var(--foam);
+  pointer-events: none; opacity: 0; transition: opacity .6s; }
 #boot { position: fixed; inset: var(--bar) 0 0; margin: 0; display: grid; place-items: center; color: var(--mist); font-size: 15px;
   transition: opacity .4s; pointer-events: none; }
 
@@ -65,12 +81,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   <a id="alone" href="../" target="_blank" rel="noopener">Open on its own page ↗</a>
 </header>
 <main id="stage"><div id="scaler"><div id="track"></div></div></main>
-<p id="boot">Filling the sea…</p>
+<p id="boot"></p>
+<p id="hint"></p>
+<p id="lead">Four questions about Dubai's property boom, 2015 to 2026</p>
 
 <script>
 // The four views, in order along the strip. The buyer's view (this repo) opens first.
 const VIEWS = [
-  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4', q: 'Where can my budget still buy?', src: '../' },
+  { key: 'buyer', role: 'Buyer', colour: '#5ea6e4', q: 'Where can my budget still buy?', src: '../', minH: 688 },   // one screen: laid out at least 688 px tall
   { key: 'developer', role: 'Developer', colour: '#ef8a4c', q: 'Where is apartment buying concentrated, and where are land plots sold?',
     src: 'https://urwahsheikha.github.io/cs333-view-c/' },
   { key: 'planner', role: 'Planner', colour: '#e8656e', q: 'Do sales happen where people live?',
@@ -82,7 +100,7 @@ const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = id => document.getElementById(id);
 const tabs = $('tabs'), pill = $('pill'), track = $('track'), scaler = $('scaler'), stage = $('stage'), alone = $('alone');
 const MIN_W = 1240;          // the views are laid out for at least this width; a narrower screen shows them slightly smaller
-let cur = 0, CW = 0, GAP = 28, busy = false, queued = null;
+let cur = 0, CW = 0, GAP = 28, busy = false, queued = null, opening = null;
 
 // ---------------------------------------------------------------------
 // tabs and cards
@@ -95,7 +113,7 @@ VIEWS.forEach((v, i) => {
   tabs.appendChild(b); v.tab = b;
 
   const card = document.createElement('section');
-  card.className = 'card'; card.style.setProperty('--c', v.colour); card.setAttribute('aria-label', `${v.role}: ${v.q}`);
+  card.className = 'card ' + v.key; card.style.setProperty('--c', v.colour); card.setAttribute('aria-label', `${v.role}: ${v.q}`);
   card.innerHTML = `<div class="veil"><div><b>${v.role}</b><span>${v.q}</span><em></em></div></div>`;
   track.appendChild(card); v.card = card; v.veil = card.firstChild;
 });
@@ -120,7 +138,7 @@ function layout() {
   placePill(cur);
 }
 function fit(v) {
-  const W = CW, H = v.card.clientHeight, k = W < MIN_W ? W / MIN_W : 1, el = v.frame;
+  const W = CW, H = v.card.clientHeight, k = Math.min(1, W / MIN_W, v.minH ? H / v.minH : 1), el = v.frame;
   el.style.width = W / k + 'px'; el.style.height = H / k + 'px'; el.style.transform = k < 1 ? `scale(${k})` : '';
   const size = `${W}x${H}`;
   if (v.size && v.size !== size && VIEWS[cur] !== v) v.stale = true;   // a view that sized itself for another screen starts again
@@ -158,6 +176,7 @@ async function preloadRest() {
 // ---------------------------------------------------------------------
 async function go(i, { push = true } = {}) {
   i = (i + VIEWS.length) % VIEWS.length;
+  if (opening) return opening(i);
   if (busy) { queued = i; return; }
   if (i === cur) return;
   busy = true;
@@ -192,6 +211,67 @@ addEventListener('popstate', () => { const k = VIEWS.findIndex(v => '#' + v.key 
 let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(layout, 100); });
 
 // ---------------------------------------------------------------------
+// the opening (a fresh visit only): the four views are dealt onto the table as cards, each showing its
+// question, the tab light hops along as they land, then the camera dives into the buyer's view, which is
+// already drawn under its card. A click on any card (or a tab, or a key) dives into that one instead.
+// ---------------------------------------------------------------------
+async function intro() {
+  const W = stage.clientWidth, pad = 10, stripW = VIEWS.length * CW + (VIEWS.length - 1) * GAP;
+  const s0 = Math.min(.3, W * .88 / stripW), x0 = W / 2 - (pad + stripW / 2);
+  let target = 0, wake;
+  const woken = new Promise(r => wake = r);
+  opening = i => { target = i; placePill(i, 300); wake(); };
+  const onKey = e => { if (/^[1-4]$/.test(e.key)) target = +e.key - 1; wake(); };
+  addEventListener('keydown', onKey);
+  VIEWS.forEach((v, i) => v.card.onclick = () => opening && opening(i));
+
+  $('boot').style.opacity = 0;
+  track.classList.add('intro'); scaler.style.setProperty('--s', s0);
+  scaler.style.transform = `scale(${s0})`; track.style.transform = `translateX(${x0}px)`;
+  pill.style.opacity = 0;
+  load(VIEWS[0]);                                                     // the buyer's view draws itself under its card
+  const lead = $('lead');
+  lead.style.top = (stage.getBoundingClientRect().top + H() / 2 - stage.clientHeight / 2 * s0 - 58) + 'px';
+  setTimeout(() => { if (opening) lead.style.opacity = 1; }, 900);
+
+  // deal: each card drops in with a little tilt and a bounce
+  const deals = VIEWS.map((v, i) => v.card.animate([
+    { transform: `translateY(${H() * .7}px) rotate(${i % 2 ? -7 : 6}deg) scale(.9)`, opacity: 0 },
+    { transform: 'none', opacity: 1 }],
+    { duration: 760, delay: 200 + i * 170, easing: 'cubic-bezier(.18,1.45,.4,1)', fill: 'backwards' }));
+  VIEWS.forEach((v, i) => setTimeout(() => { pill.style.opacity = 1; placePill(i, 240); }, 200 + i * 170 + 420));
+  await Promise.race([Promise.all(deals.map(a => a.finished)), woken]);
+  deals.forEach(a => a.finish());
+  setTimeout(() => placePill(target, 420), 250);                      // the light settles on where we are going
+  await Promise.race([new Promise(r => setTimeout(r, 1300)), woken]);   // a moment to read the four questions
+
+  // wait for the chosen view, if it is still loading
+  const v = VIEWS[target];
+  if (!v.frame) load(v);
+  if (!v.ready) { $('hint').textContent = target === 0 ? 'Filling the sea…' : 'Loading…'; $('hint').style.opacity = 1; }
+  await Promise.race([v.loaded, new Promise(r => setTimeout(r, 30000))]);
+  $('hint').style.opacity = 0;
+
+  // dive
+  opening = null; removeEventListener('keydown', onKey); VIEWS.forEach(x => x.card.onclick = null);
+  cur = target; placePill(target, 1150);
+  if (target) history.replaceState(null, '', '#' + v.key);
+  alone.href = new URL(v.src, location.href).href;
+  // the strip jumps to its final place at once; the camera starts where the overview was and closes in on
+  // the chosen card, which grows and drifts to the middle while the others slide away past the edges
+  const ease = 'cubic-bezier(.7,0,.18,1)', xEnd = xOf(target);
+  scaler.style.transform = ''; track.style.transform = `translateX(${xEnd}px)`;
+  $('lead').style.opacity = 0;
+  const a1 = scaler.animate([{ transform: `translateX(${s0 * (x0 - xEnd)}px) scale(${s0})` }, { transform: 'translateX(0px) scale(1)' }],
+    { duration: 1250, easing: ease });
+  v.veil.style.transition = 'opacity .45s'; v.veil.classList.add('off');   // the card turns into the live view as we dive
+  await a1.finished;
+  v.veil.style.transition = ''; track.classList.remove('intro');
+  v.shown = true;
+}
+const H = () => stage.clientHeight;
+
+// ---------------------------------------------------------------------
 // start: the buyer's view (or the one named in the link) rises into place once it is drawn
 // ---------------------------------------------------------------------
 (async () => {
@@ -199,6 +279,7 @@ let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(lay
   const k = VIEWS.findIndex(v => '#' + v.key === location.hash);
   cur = k < 0 ? 0 : k;
   layout();
+  if (k < 0 && !reduce) { await intro(); setTimeout(preloadRest, 1200); return; }
   const v = VIEWS[cur];
   alone.href = new URL(v.src, location.href).href;
   $('boot').textContent = cur === 0 ? 'Filling the sea…' : 'Loading…';
