@@ -98,7 +98,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   transition: opacity .4s; pointer-events: none; }
 
 @media (max-width: 760px) { .name, .tab kbd, #alone { display: none; } .tab { padding: 7px 10px; } #bar { padding-left: 8px; } }
-@media (prefers-reduced-motion: reduce) { .veil em::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .veil em::after, .fx .wave { animation: none; } }
 </style>
 </head>
 <body>
@@ -208,14 +208,11 @@ function layout() {
 function fit(v) {
   const W = CW, H = v.card.clientHeight, k = Math.min(1, W / MIN_W, v.minH ? H / v.minH : 1), el = v.frame;
   el.style.width = W / k + 'px'; el.style.height = H / k + 'px'; el.style.transform = k < 1 ? `scale(${k})` : '';
-  const size = `${W}x${H}`;
-  if (v.size && v.size !== size && VIEWS[cur] !== v) v.stale = true;   // a view that sized itself for another screen starts again
-  v.size = size;
-}
+}   // every view follows a new frame size itself (the buyer's view lays itself out again), so nothing reloads
 
 // ---------------------------------------------------------------------
-// loading: the buyer's view first, the others quietly after it. The first time a view is shown it starts
-// fresh (from the cache), so it opens the way its author made it, behind a white card with its question.
+// loading: the first view during the opening, the others quietly after it, so moving between views never
+// waits. A view that is still loading shows a white card with its question until it is ready.
 // ---------------------------------------------------------------------
 function load(v) {
   if (!v.frame) { v.frame = document.createElement('iframe'); v.frame.title = `${v.role}: ${v.q}`; v.frame.setAttribute('allow', 'fullscreen'); v.card.appendChild(v.frame); }
@@ -251,14 +248,20 @@ async function go(i, { push = true } = {}) {
   busy = true;
   const from = cur, v = VIEWS[i], d = Math.abs(i - from);
   if (push) history.pushState(null, '', '#' + v.key);
-  if (v.stale || !v.frame) { v.veil.classList.remove('off'); v.stale = false; v.shown = false; load(v); }   // not loaded yet (rare)
+  if (!v.frame) { v.veil.classList.remove('off'); v.shown = false; load(v); }                        // not loaded yet (rare)
   else if (v.ready) { v.shown = true; v.veil.classList.add('off'); }                                  // loaded already: no wait
-  const ms = reduce ? 0 : 820 + 160 * (d - 1), S = 1 - .07 - .035 * (d - 1);
+  const ms = reduce ? 480 : 820 + 160 * (d - 1), S = 1 - .07 - .035 * (d - 1);
   placePill(i, ms);
   alone.href = new URL(v.src, location.href).href;
   cur = i;
-  track.style.transform = `translateX(${xOf(i)}px)`;
-  if (ms) {
+  if (reduce) {                       // reduced motion: a quick cross-fade instead of the slide
+    const out = scaler.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+    await out.finished;
+    track.style.transform = `translateX(${xOf(i)}px)`;
+    const inn = scaler.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280 }); out.cancel();
+    await inn.finished;
+  } else {
+    track.style.transform = `translateX(${xOf(i)}px)`;
     const a1 = track.animate([{ transform: `translateX(${xOf(from)}px)` }, { transform: `translateX(${xOf(i)}px)` }],
       { duration: ms, easing: 'cubic-bezier(.65,0,.35,1)' });
     const a2 = scaler.animate([{ transform: 'scale(1)' }, { transform: `scale(${S})`, offset: .45 }, { transform: 'scale(1)' }],
@@ -278,17 +281,19 @@ addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
 });
 addEventListener('popstate', () => { const k = VIEWS.findIndex(v => '#' + v.key === location.hash); go(k < 0 ? 0 : k, { push: false }); });
-let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(layout, 100); });
+let rT, relayout = false;
+addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (opening) relayout = true; else layout(); }, 100); });
 
 // ---------------------------------------------------------------------
-// the opening (a fresh visit only): the four views are dealt onto the table as cards, each showing its
-// question, the tab light hops along as they land, then the camera dives into the buyer's view, which is
-// already drawn under its card. A click on any card (or a tab, or a key) dives into that one instead.
+// the opening, every time the page opens: the four views are dealt onto the table as cards, each sketching
+// its chart, the tab light hops along as they land, then the camera dives into the buyer's view (or the one
+// in the link), already drawn under its card. A click on a card, a tab or a number key picks another.
+// With reduced motion the cards fade in and the dive is a cross-fade.
 // ---------------------------------------------------------------------
-async function intro() {
+async function intro(first = 0) {
   const W = stage.clientWidth, pad = 10, stripW = VIEWS.length * CW + (VIEWS.length - 1) * GAP;
   const s0 = Math.min(.3, W * .88 / stripW), x0 = W / 2 - (pad + stripW / 2);
-  let target = 0, wake;
+  let target = first, wake;
   const woken = new Promise(r => wake = r);
   opening = i => { target = i; placePill(i, 300); wake(); };
   const onKey = e => { if (/^[1-4]$/.test(e.key)) target = +e.key - 1; wake(); };
@@ -299,14 +304,14 @@ async function intro() {
   track.classList.add('intro'); scaler.style.setProperty('--s', s0);
   scaler.style.transform = `scale(${s0})`; track.style.transform = `translateX(${x0}px)`;
   pill.style.opacity = 0;
-  load(VIEWS[0]);                                                     // the buyer's view draws itself under its card
+  load(VIEWS[first]);                                                 // the first view draws itself under its card
   const lead = $('lead');
   lead.style.top = (stage.getBoundingClientRect().top + H() / 2 - stage.clientHeight / 2 * s0 - 58) + 'px';
   setTimeout(() => { if (opening) lead.style.opacity = 1; }, 900);
 
   // deal: each card drops in with a little tilt and a bounce
   const deals = VIEWS.map((v, i) => v.card.animate([
-    { transform: `translateY(${H() * .7}px) rotate(${i % 2 ? -7 : 6}deg) scale(.9)`, opacity: 0 },
+    { transform: reduce ? 'none' : `translateY(${H() * .7}px) rotate(${i % 2 ? -7 : 6}deg) scale(.9)`, opacity: 0 },
     { transform: 'none', opacity: 1 }],
     { duration: 760, delay: 200 + i * 170, easing: 'cubic-bezier(.18,1.45,.4,1)', fill: 'backwards' }));
   VIEWS.forEach((v, i) => setTimeout(() => { pill.style.opacity = 1; placePill(i, 240); }, 200 + i * 170 + 420));
@@ -332,12 +337,23 @@ async function intro() {
   const ease = 'cubic-bezier(.7,0,.18,1)', xEnd = xOf(target);
   scaler.style.transform = ''; track.style.transform = `translateX(${xEnd}px)`;
   $('lead').style.opacity = 0;
-  const a1 = scaler.animate([{ transform: `translateX(${s0 * (x0 - xEnd)}px) scale(${s0})` }, { transform: 'translateX(0px) scale(1)' }],
-    { duration: 1250, easing: ease });
-  v.veil.style.transition = 'opacity .45s'; v.veil.classList.add('off');   // the card turns into the live view as we dive
-  await a1.finished;
-  v.veil.style.transition = ''; track.classList.remove('intro');
+  if (reduce) {
+    scaler.style.transform = `scale(${s0})`; track.style.transform = `translateX(${x0}px)`;   // still the overview
+    const out = scaler.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' });
+    await out.finished;
+    scaler.style.transform = ''; track.style.transform = `translateX(${xEnd}px)`;
+    track.classList.remove('intro'); v.veil.classList.add('off');
+    const inn = scaler.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350 }); out.cancel();
+    await inn.finished;
+  } else {
+    const a1 = scaler.animate([{ transform: `translateX(${s0 * (x0 - xEnd)}px) scale(${s0})` }, { transform: 'translateX(0px) scale(1)' }],
+      { duration: 1250, easing: ease });
+    v.veil.style.transition = 'opacity .45s'; v.veil.classList.add('off');   // the card turns into the live view as we dive
+    await a1.finished;
+    v.veil.style.transition = ''; track.classList.remove('intro');
+  }
   v.shown = true;
+  if (relayout) { relayout = false; layout(); }
 }
 const H = () => stage.clientHeight;
 
@@ -349,20 +365,8 @@ const H = () => stage.clientHeight;
   const k = VIEWS.findIndex(v => '#' + v.key === location.hash);
   cur = k < 0 ? 0 : k;
   layout();
-  if (k < 0 && !reduce) { await intro(); setTimeout(preloadRest, 300); return; }
-  const v = VIEWS[cur];
-  alone.href = new URL(v.src, location.href).href;
-  $('boot').textContent = cur === 0 ? 'Filling the sea…' : 'Loading…';
-  scaler.style.opacity = 0;
-  load(v);
-  await Promise.race([v.loaded, new Promise(r => setTimeout(r, 30000))]);
-  v.shown = true; v.veil.style.transition = 'none'; v.veil.classList.add('off');   // the first view needs no title card
-  v.veil.offsetWidth; v.veil.style.transition = '';
-  $('boot').style.opacity = 0;
-  scaler.style.opacity = '';
-  if (!reduce) scaler.animate([{ opacity: 0, transform: 'translateY(18px) scale(.985)' }, { opacity: 1, transform: 'none' }],
-    { duration: 700, easing: 'cubic-bezier(.2,.7,.2,1)' });
-  setTimeout(preloadRest, 1200);
+  await intro(cur);
+  setTimeout(preloadRest, 300);
 })();
 </script>
 </body>
