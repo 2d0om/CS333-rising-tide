@@ -22,7 +22,7 @@ import { emitter } from './emitter.js';
 import * as R from './rules.js';
 import { createSurface } from './surface.js';
 
-export const BUILD = 'View B · price-ordered colours, bedroom insight on hover, less text · 2026-11-22';
+export const BUILD = 'View B · hover box beside the chart, floor plan stays put, no click-to-period · 2026-11-22';
 
 const PERIOD_KEYS = Object.keys(R.PERIODS);
 const periodLabel = p => p.replace('-', '–');
@@ -572,12 +572,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const hoverRule = gHover.append('line').attr('y1', cm.t).attr('y2', plotB).attr('stroke', theme.ink)
     .attr('stroke-opacity', 0.3).attr('stroke-dasharray', '3 3');
   const hoverDot = gHover.append('circle').attr('r', 4.5).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
-  const hoverLab = gHover.append('text').attr('fill', theme.ink).attr('paint-order', 'stroke')
-    .attr('stroke', '#ffffff').attr('stroke-width', 3.5).attr('stroke-linejoin', 'round').style('font', `700 11px ${theme.font}`);
-  const hoverL1 = hoverLab.append('tspan').attr('y', cm.t - 8);
-  const hoverL2 = hoverLab.append('tspan').attr('y', cm.t + 7).style('font-weight', 500);
   const plotHit = chart.append('rect').attr('x', cm.l).attr('y', cm.t).attr('width', CW - cm.r - cm.l)
-    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'pointer');
+    .attr('height', plotB - cm.t).attr('fill', 'transparent').style('cursor', 'crosshair');
   const gEnd = chart.append('g');                                       // the line names, at the right
   chart.append('g').attr('pointer-events', 'none').selectAll('text').data(YEARS).join('text')
     .attr('x', y => yx(y)).attr('y', plotB + 15).attr('text-anchor', 'middle').attr('fill', theme.quiet)
@@ -722,6 +718,30 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       .attr('stroke-dasharray', '4 2');
   }
   const yearAt = event => Math.max(YEARS[0], Math.min(YEARS[YEARS.length - 1], Math.round(yx.invert(d3.pointer(event, chart.node())[0]))));
+  // The box beside the chart: which line, that year's home and today's, in m² and in bedrooms, with the two
+  // homes drawn as floor plans (then dashed, now filled, same scale). The headline's floor plan never
+  // changes on hover: it always shows the area you clicked (or the typical one).
+  function chartBoxTip(L, d) {
+    const y = d.y, v = d.v, last = L.last, now = last && last.y !== y ? last.v : null;
+    const big = Math.max(v, now || 0), k = Math.min(4.4, 54 / Math.sqrt(big)), side = m => k * Math.sqrt(m), H = Math.ceil(side(big)) + 2;
+    const sq = (m, then) => `<rect x="1" y="${H - 1 - side(m)}" width="${side(m)}" height="${side(m)}" ` +
+      (then ? `fill="#f1f4f8" stroke="#8493a5" stroke-width="1.2" stroke-dasharray="3 2"` : `fill="${L.col}" fill-opacity="0.85"`) + '/>';
+    const plan = `<svg width="${Math.ceil(side(big)) + 2}" height="${H}" style="flex:none;display:block">` +
+      (now != null ? sq(v, true) + sq(now, false) : sq(v, false)) + '</svg>';
+    const when = `around ${y}${y === PARTIAL_YEAR ? ' (to Aug)' : ''}`;
+    const k2 = now != null ? bedsOf(v).i - bedsOf(now).i : 0;
+    const lines = now != null
+      ? `<div>${when}: <b>${Math.round(v)} m²</b>, ${bedsOf(v).w}</div><div>now: <b>${Math.round(now)} m²</b>, ${bedsOf(now).w}</div>` +
+        (k2 ? `<div style="color:${theme.quiet}">${Math.abs(k2)} bedroom${Math.abs(k2) > 1 ? 's' : ''} ${k2 > 0 ? 'lost' : 'gained'}</div>` : '')
+      : `<div>${when}: <b>${Math.round(v)} m²</b>, ${bedsOf(v).w}</div>`;
+    tip.html(`<div style="font-weight:700;color:${L.text};margin-bottom:4px">${L.label}</div>` +
+      `<div style="display:flex;gap:10px;align-items:flex-end">${plan}<div>${lines}</div></div>`).style('opacity', 1);
+    // to the left of the chart, level with the point, kept inside the view
+    const rr = root.node().getBoundingClientRect(), cr = chart.node().getBoundingClientRect();
+    const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+    const left = cr.left - rr.left - tw - 12, top = cr.top - rr.top + ym(v) - th / 2;
+    tip.style('left', `${Math.max(4, left)}px`).style('top', `${Math.max(4, Math.min(height - th - 4, top))}px`);
+  }
   plotHit.on('mousemove', event => {
     if (!cur || !ringView) return;
     const y = yearAt(event), my = d3.pointer(event, chart.node())[1];
@@ -730,32 +750,14 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
       const d = L.pts.find(q => q.y === y);
       if (d && d.v != null) { const dy = Math.abs(ym(d.v) - my); if (!best || dy < best.dy) best = { L, d, dy }; }
     });
-    if (!best) { gHover.attr('opacity', 0); return; }
+    if (!best) { gHover.attr('opacity', 0); hideTip(); return; }
     hoverRule.attr('x1', yx(y)).attr('x2', yx(y));
     hoverDot.attr('cx', yx(y)).attr('cy', ym(best.d.v)).attr('fill', best.L.col);
-    // the insight: that home in bedrooms, then and now (sizes from our own data, see bedsOf)
-    const v = best.d.v, last = best.L.last, now = last && last.y !== y ? last.v : null;
-    const l1 = `${best.L.label}, around ${y}${y === PARTIAL_YEAR ? ' (to Aug)' : ''}: ${Math.round(v)} m², ${bedsOf(v).w}`;
-    let l2 = '';
-    if (now != null) {
-      const k = bedsOf(v).i - bedsOf(now).i;
-      l2 = `now ${Math.round(now)} m², ${bedsOf(now).w}${k > 0 ? ` · ${k} bedroom${k > 1 ? 's' : ''} lost` : k < 0 ? ` · ${-k} bedroom${k < -1 ? 's' : ''} gained` : ''}`;
-    }
-    const w = Math.max(textW(l1, 11, 700), textW(l2, 11, 500)), x0 = Math.max(cm.l, Math.min(CW - cm.r - w, yx(y) - w / 2));
-    hoverL1.attr('x', x0).text(l1); hoverL2.attr('x', x0).text(l2);
     gHover.attr('opacity', 1); gPeak.attr('opacity', 0);
     outlineRing(best.L.ring);
-    renderPlan({ a: now == null ? null : v, aText: `around ${y}`, z: now == null ? v : now, zText: now == null ? 'now' : 'now', where: best.L.where });
+    chartBoxTip(best.L, best.d);
   })
-    .on('mouseleave', () => {
-      gHover.attr('opacity', 0); gPeak.attr('opacity', 1); outlineRing(null);
-      if (cur && C) drawPlan(cur, selectedOf(cur));
-    })
-    .on('click', event => {
-      if (!cur) return;
-      const y = yearAt(event), p = PERIOD_KEYS.find(k => y >= R.PERIODS[k][0] && y <= R.PERIODS[k][1]);
-      if (p && p !== cur.period) ev.emit('period', p);
-    });
+    .on('mouseleave', () => { gHover.attr('opacity', 0); gPeak.attr('opacity', 1); outlineRing(null); hideTip(); });
   knob.call(dragOn(barX, ssvg.node())).on('keydown', event => {
     const f = { ArrowLeft: 1 / 1.1, ArrowDown: 1 / 1.1, ArrowRight: 1.1, ArrowUp: 1.1, PageDown: 1 / 1.5, PageUp: 1.5 }[event.key];
     if (!f || !cur) return;
