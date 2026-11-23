@@ -121,17 +121,17 @@ body.front #bar, body.front #stage { opacity: 0; visibility: hidden; }
 #front .sea i.b { animation-duration: 26s; animation-direction: reverse; }
 #front .in { position: relative; min-height: 100%; max-width: 1280px; margin: 0 auto; padding: clamp(28px, 7vh, 88px) clamp(24px, 5vw, 64px) 18px;
   display: flex; flex-direction: column; }
-#front h1 { margin: 0; overflow: hidden; font: 600 clamp(60px, 9vw, 124px)/1.02 var(--serif); letter-spacing: -.03em; color: var(--ink);
+#front h1 { margin: 0; overflow: hidden; font: 600 clamp(72px, min(13vw, 21vh), 190px)/1.02 var(--serif); letter-spacing: -.03em; color: var(--ink);
   padding-bottom: .16em; margin-bottom: -.1em; }
 #front h1 span { display: inline-block; }
-#front .line { display: block; width: min(520px, 70%); height: 18px; margin: 6px 0 18px; overflow: visible; }
+#front .line { display: block; font-size: clamp(72px, min(13vw, 21vh), 190px); width: 5.2em; max-width: 100%; height: 22px; margin: 8px 0 22px; overflow: visible; }
 #front .line path { fill: none; stroke: #3d7fb5; stroke-width: 2.2; stroke-linecap: round; }
-#front .sub { margin: 0; max-width: 31em; font: 500 clamp(18px, 1.6vw, 23px)/1.45 var(--serif); color: #3b4a63; }
+#front .sub { margin: 0; max-width: 32em; font: 500 clamp(20px, min(2.2vw, 3.6vh), 31px)/1.45 var(--serif); color: #3b4a63; }
 #front .go { margin-top: clamp(18px, 3.5vh, 34px); display: flex; align-items: center; gap: 18px; }
-#front .go button { font: 700 16px var(--sans); color: #fff; background: var(--ink); padding: 13px 32px; border-radius: 999px;
+#front .go button { font: 700 clamp(16px, 1.4vw, 19px) var(--sans); color: #fff; background: var(--ink); padding: clamp(13px, 1.3vw, 17px) clamp(32px, 3vw, 44px); border-radius: 999px;
   box-shadow: 0 8px 22px rgba(22, 35, 59, .18); transition: transform .2s, background-color .2s; }
 #front .go button:hover { background: #22345a; transform: translateY(-1px); }
-#front .go span { color: var(--quiet); font-size: 14px; }
+#front .go span { color: var(--quiet); font-size: clamp(14px, 1.15vw, 16px); }
 #front .parts { list-style: none; margin: auto 0 0; padding: clamp(24px, 4vh, 40px) 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 #front .parts li { padding: 16px 18px 18px; border-radius: 14px; background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--c);
   box-shadow: 0 10px 28px rgba(22, 35, 59, .07); }
