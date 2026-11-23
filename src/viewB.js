@@ -543,11 +543,11 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     gLabels.selectAll('text.lab').style('font-weight', d => d.c === s.selected ? 800 : 600);
   }
 
-  // ---------- reach curves ----------
-  // x = budget (log), y = how many of the comparable neighbourhoods that budget reaches. One step line
-  // per period, coloured light → dark in time order (lightness for an ordered attribute); every step
-  // is one neighbourhood. A curve further right means the same reach costs more. The vertical line is
-  // your budget, the same one as the bar on the map: drag or click in the plot to move it too.
+  // ---------- the line chart ----------
+  // x = year, y = the m² your budget buys there (linear, from 0). One line per price group (cheapest,
+  // mid-priced, priciest third of the counted neighbourhoods, by 2015–17 prices), plus a dashed orange
+  // line for the clicked neighbourhood. The 80 m² waterline splits sand (above) from sea (below).
+  // PCOL: the colour of each period on its button, light → dark in time order.
   const PCOL = ['#b3bfcc', '#8c9fb5', '#5f7d9c', theme.depth.deep];
   const pcol = p => PCOL[Math.min(PCOL.length - 1, PERIOD_KEYS.indexOf(p))];
   const CW = panelW;
@@ -721,7 +721,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const jumpOn = (sc, node) => event => { if (cur) ev.emit('budget', roundBudget(budgetAt(sc, d3.pointer(event, node)[0]))); };
   sHit.call(dragOn(barX, ssvg.node())).on('click', jumpOn(barX, ssvg.node()));
   // The line chart: hover a year to read the nearest line there (the floor plan shows that home); hover a
-  // line (or its value) to outline its group's neighbourhoods on the map; click a year to show its period.
+  // line (or its value) to outline its group's neighbourhoods on the map. Hover only: nothing here is clicked.
   const gRingMarks = top.append('g').attr('pointer-events', 'none');
   function outlineRing(i) {
     const members = i == null ? [] : RINGS[i].members.filter(c => byComm.has(c));
