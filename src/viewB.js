@@ -1,4 +1,4 @@
-// src/viewB.js — View B, "The Sea" (Member 2)
+// src/viewB.js — the Buyer view, "The Sea"
 // Sand is where your budget buys a typical home; water is where it does not, deeper where fewer
 // homes are within reach.
 // Contract: createViewB(container, data, theme, { width, height, guessFirst? }) -> { update(state), on(event, handler) }
@@ -6,17 +6,17 @@
 // Emits: select, pin, hover, mode, thenPeriod, period, budget.
 //
 // Design rules for this view:
-//   * Plain words and counts, not percentages of abstractions: "AED 1.2M buys a typical 80 m²
-//     apartment in 26 of 35 neighbourhoods in 2015–17, but only 11 in 2024–26."
-//   * What matters is on screen without hovering: two big numbers (then → now), the reach curves
-//     (one line per period: how many neighbourhoods each budget reaches), the typical price in each
-//     period, and orange outlines on the neighbourhoods that went under. Clicking a neighbourhood
-//     traces it through the four periods on the chart. Hover only adds a tooltip.
+//   * Plain words and counts: "AED 1.2M buys a typical 80 m² apartment in 19 of the 27
+//     neighbourhoods in 2015–17, but only 9 in 2024–26."
+//   * What matters is on screen without hovering: the two big numbers (then → now), the floor plan of
+//     the home the budget buys, the typical price in each period, the line chart of the m² the budget
+//     buys each year, and orange outlines on the neighbourhoods that went under. Clicking a
+//     neighbourhood adds its own line to the chart. Hover only highlights and adds a tooltip.
 //   * Every colour is exact: one fill per community from its own sales. The coastline runs along
 //     real community borders, never interpolated. Moving water and fog (surface.js) only add light
 //     and texture; names, borders, the coastline and selections stay above them.
 //   * Everything fits one screen: a title on top; the map on the left with your budget right on top
-//     of it; the finding, two plain filters and the reach chart on the right.
+//     of it; the finding, two filters and the line chart on the right.
 //   * Only things that respond look like they respond. Areas with no sales do nothing.
 import { emitter } from './emitter.js';
 import * as R from './rules.js';
@@ -129,7 +129,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // The counted set: neighbourhoods with 20+ sales in EVERY period (27 at the defaults). One fixed
   // set means every count is "of 27" in every period, and a neighbourhood can never drop out of a
   // period's count just because it had too few sales that period (which looks like a price change
-  // but is not). The team's two-period like-for-like rule gives 35 for 2015–17 vs 2024–26.
+  // but is not).
   function reach(s) {
     const all = PERIOD_KEYS.map(p => statsFor(p, s));
     const set = [...all[0].keys()].filter(c => all.every(Sp => charted(Sp.get(c))));

@@ -1,4 +1,4 @@
-// src/surface.js — the moving water and the fog, drawn on the GPU over the map (Member 2)
+// src/surface.js — the moving water and the fog, drawn on the GPU over the map (the Buyer view)
 //
 // The map's colours are drawn by the SVG underneath, exactly from the data. This one transparent
 // layer only adds movement on top, inside masks rasterised from the same community shapes:

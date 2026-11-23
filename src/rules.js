@@ -14,12 +14,7 @@ export const isExtreme = r => r.price < 1000 || r.price > 100000;  // removed on
 export const PRICE_LEVEL = { 2015: 0.8836, 2016: 0.898, 2017: 0.9156, 2018: 0.9438, 2019: 0.9255, 2020: 0.9063,
   2021: 0.9079, 2022: 0.9559, 2023: 0.9715, 2024: 0.9877, 2025: 1, 2026: 1 };
 export const priceIn = (r, money) => money === 'real' ? r.price / PRICE_LEVEL[r.date.getUTCFullYear()] : r.price;
-export const pct = (values, q) => d3.quantile(values.slice().sort(d3.ascending), q);  // same method as pandas
-export const m2For = (budget, ppm2) => budget / ppm2;
-export const depth = share => share >= 0.9 ? 'dry' : share >= 0.5 ? 'wet' : share >= 0.1 ? 'shallow' : 'deep';
-// One community in one period: its filtered prices give n, p10, p50, p90,
-//   and shareWithin = share of prices <= budget / size.
-// Land = n >= MIN_SALES and shareWithin >= 0.5.
-// Like-for-like = MIN_SALES or more sales in BOTH periods being compared.
-// Residents share = sum of "Population 2019" over land communities / the same sum over like-for-like communities.
+// One community in one period: its filtered prices, sorted, give n and
+//   shareWithin = share of prices <= budget / size.
+// Land (sand) = n >= MIN_SALES and shareWithin >= 0.5; water = n >= MIN_SALES and shareWithin < 0.5.
 // Match communities with String(feature.properties.COMM_NUM) === row.comm_num.

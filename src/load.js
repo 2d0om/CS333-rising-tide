@@ -10,5 +10,5 @@ export async function loadAll() {
   ]);
   raw.forEach(r => { r.date = day(r.instance_date); r.price = +r.meter_sale_price; });
   const rows = raw.filter(r => r.date && +r.date >= START && +r.date < END);
-  return { raw, rows, geo, metro };  // raw = all 89,212 (for the ledger); rows = the 67,022 in the window
+  return { raw, rows, geo, metro };  // raw = all 89,212 rows; rows = the 67,022 in the window
 }
