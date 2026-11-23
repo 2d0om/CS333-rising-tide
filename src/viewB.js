@@ -1262,7 +1262,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   // Before the map, the reader draws what happened to one fixed budget: 1 million AED, a typical
   // 80 m² apartment, the same 27 neighbourhoods. The 2015–17 point is given; they draw the rest.
   // Most people draw a steady fall. The data says the opposite first: homes got cheaper until 2020,
-  // so the budget reached MORE neighbourhoods (16 → 19), and then 16 went under in one period (→ 3).
+  // so the budget reached MORE neighbourhoods (15 → 19), and then 14 went under in one period (→ 3).
   // On "Show me" the real line draws period by period and the map's tide follows it, so the eye moves
   // from the guess to the map. Until the reader leaves the scene the view shows the scene, not the
   // shared state; leaving via "Explore" sends the scene's budget so the map continues from what they
