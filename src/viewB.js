@@ -126,8 +126,8 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
   const isLand = st => charted(st) && st.shareWithin >= 0.5;
   const isWater = st => charted(st) && st.shareWithin < 0.5;
 
-  // The counted set: neighbourhoods with 20+ sales in EVERY period (30 at the defaults). One fixed
-  // set means every count is "of 30" in every period, and a neighbourhood can never drop out of a
+  // The counted set: neighbourhoods with 20+ sales in EVERY period (27 at the defaults). One fixed
+  // set means every count is "of 27" in every period, and a neighbourhood can never drop out of a
   // period's count just because it had too few sales that period (which looks like a price change
   // but is not). The team's two-period like-for-like rule gives 35 for 2015–17 vs 2024–26.
   function reach(s) {
@@ -1260,7 +1260,7 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
 
   // ---------- your guess first ----------
   // Before the map, the reader draws what happened to one fixed budget: 1 million AED, a typical
-  // 80 m² apartment, the same 30 neighbourhoods. The 2015–17 point is given; they draw the rest.
+  // 80 m² apartment, the same 27 neighbourhoods. The 2015–17 point is given; they draw the rest.
   // Most people draw a steady fall. The data says the opposite first: homes got cheaper until 2020,
   // so the budget reached MORE neighbourhoods (16 → 19), and then 16 went under in one period (→ 3).
   // On "Show me" the real line draws period by period and the map's tide follows it, so the eye moves
