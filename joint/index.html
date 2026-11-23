@@ -49,27 +49,31 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .veil.off { opacity: 0; pointer-events: none; }
 .veil b { display: block; font: 700 13px var(--sans); color: var(--k); margin-bottom: 6px; }
 .veil span { display: block; max-width: 22em; padding: 0 24px; font: 600 26px/1.2 var(--serif); }
-.veil em { position: relative; display: block; width: 120px; height: 2px; margin: 18px auto 0; border-radius: 2px; overflow: hidden; background: #e5e9ef; }
-.veil em::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--c); animation: run 1.1s ease-in-out infinite; }
+.veil em { position: relative; display: block; width: 160px; height: 4px; margin: 20px auto 0; border-radius: 4px; overflow: hidden; background: #e5e9ef; }
+.veil em::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--c); border-radius: 4px;
+  transform: scaleX(var(--p, 0)); transform-origin: left; transition: transform .35s ease-out; }
+.veil i.pct { display: block; margin-top: 8px; font: 500 12px var(--sans); font-style: normal; color: var(--quiet); font-variant-numeric: tabular-nums; }
 @keyframes run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 /* the opening: the four views dealt onto the table as cards, then the camera dives into the buyer's */
 #track.intro .card { cursor: pointer; border-radius: calc(12px / var(--s)); }
-#track.intro .veil b { font-size: calc(13px / var(--s)); margin-bottom: calc(6px / var(--s)); }
-#track.intro .veil span { font-size: calc(18px / var(--s)); line-height: 1.18; padding: 0 calc(14px / var(--s)); }
+#track.intro .veil b { font-size: calc(12.5px / var(--s)); margin-bottom: calc(4px / var(--s)); }
+#track.intro .veil span { font-size: calc(15.5px / var(--s)); line-height: 1.22; padding: 0 calc(12px / var(--s)); }
 #track.intro .veil em { width: calc(70px / var(--s)); height: calc(2px / var(--s)); margin-top: calc(11px / var(--s)); }
 #track.intro .card:hover { box-shadow: 0 0 0 calc(2px / var(--s)) var(--c), 0 14px 36px rgba(22, 35, 59, .14); }
 /* while the buyer's view loads, its card fills with sea */
 /* each card plays a small sketch of its own chart as it lands: the buyer's fills with sea, the developer's
    heatmap ripples into its diagonal, the planner's ribbons cross the creek, the investor's path draws itself.
    Only transform and opacity move, so the sketches stay smooth even while a view is busy loading. */
-.fx { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 38%; pointer-events: none; overflow: hidden; }
+.fx { display: none; position: relative; flex: 1; min-height: calc(40px / var(--s)); width: 100%; margin-top: calc(6px / var(--s)); pointer-events: none; overflow: hidden; }
 #track.intro .fx { display: block; }
-#track.intro .veil { align-items: start; padding-top: calc(16px / var(--s)); }
+#track.intro .veil { display: flex; flex-direction: column; align-items: stretch; padding: calc(12px / var(--s)) 0 calc(8px / var(--s)); }
+#track.intro .veil i.pct { display: none; }
 #track.intro .veil > .txt { position: relative; z-index: 1; }
 #track.intro .veil em { display: none; }
-.fx .box { position: absolute; left: 50%; bottom: 0; height: 100%; aspect-ratio: 4 / 1; transform: translateX(-50%); }
+.fx { container-type: size; }
+.fx .box { position: absolute; left: 50%; bottom: 0; width: min(92cqw, 400cqh); aspect-ratio: 4 / 1; transform: translateX(-50%); }   /* as big as fits, never cut */
 .fx .box > * { position: absolute; }
-.fx .rise { position: absolute; inset: 0; transform: translateY(100%); animation: rise 2.4s cubic-bezier(.3, .6, .3, 1) var(--d) forwards; will-change: transform; }
+.fx .rise { position: absolute; inset: 0; transform: translateY(calc((1 - var(--p, 0)) * 100%)); transition: transform .6s ease-out; will-change: transform; }   /* the buyer's sea rises as its view loads */
 .fx .wave { position: absolute; left: 0; top: 0; width: 200%; height: 100%; background-repeat: repeat-x; background-size: 25% 100%;
   animation: drift 3.2s linear infinite; will-change: transform; }
 .fx .wave.b { animation-duration: 4.6s; animation-direction: reverse; }
@@ -239,7 +243,7 @@ VIEWS.forEach((v, i) => {
 
   const card = document.createElement('section');
   card.className = 'card ' + v.key; card.style.setProperty('--c', v.colour); card.style.setProperty('--k', v.k); card.setAttribute('aria-label', `${v.role}: ${v.q}`);
-  card.innerHTML = `<div class="veil"><div class="txt"><b>${v.role}</b><span>${v.q}</span><em></em></div>${FX[v.key]()}</div>`;
+  card.innerHTML = `<div class="veil"><div class="txt"><b>${v.role}</b><span>${v.q}</span><em></em><i class="pct"></i></div>${FX[v.key]()}</div>`;
   card.style.setProperty('--d', 640 + i * 170 + 'ms');               // starts as the card lands
   track.appendChild(card); v.card = card; v.veil = card.firstChild;
 });
@@ -293,17 +297,39 @@ function fit(v) {
 // loading: the first view during the opening, the others quietly after it, so moving between views never
 // waits. A view that is still loading shows a white card with its question until it is ready.
 // ---------------------------------------------------------------------
+// Progress is real: each view passes the same steps (page arrives, page loaded, its data downloaded, its
+// chart drawn) and the bar fills to each step as it happens, easing forward in between. It reaches the
+// end only when the chart is actually on the page.
+function setP(v, p) { v.p = p; v.card.style.setProperty('--p', p.toFixed(3)); const t = v.card.querySelector('.pct'); if (t) t.textContent = p >= 1 ? 'Ready' : `Loading ${Math.round(p * 100)}%`; }
+function drawn(v) {
+  try {
+    const w = v.frame.contentWindow, d = v.frame.contentDocument;
+    if (v.key === 'buyer') return !!w.__viewB;
+    return d.readyState === 'complete' && d.querySelectorAll('svg path, svg rect, svg circle').length > 120;
+  } catch (e) { return false; }
+}
 function load(v) {
   if (!v.frame) { v.frame = document.createElement('iframe'); v.frame.title = `${v.role}: ${v.q}`; v.frame.setAttribute('allow', 'fullscreen'); v.card.appendChild(v.frame); }
   fit(v);
-  v.ready = false;
-  v.loaded = new Promise(res => v.frame.addEventListener('load', async () => {
-    if (v.key === 'buyer') for (let i = 0; i < 150; i++) {          // same site: wait until its map is drawn
-      try { if (v.frame.contentWindow.__viewB) break; } catch (e) { break; }
-      await new Promise(r => setTimeout(r, 100));
-    }
-    v.ready = true; watch(v); res();
-  }, { once: true }));
+  v.ready = false; setP(v, .03);
+  const t0 = performance.now();
+  v.loaded = new Promise(res => {
+    const step = () => {
+      let cap = .25, d = null, w = null;
+      try { d = v.frame.contentDocument; w = v.frame.contentWindow; } catch (e) {}
+      if (d && d.URL !== 'about:blank') {
+        if (d.readyState !== 'loading') cap = .45;
+        if (d.readyState === 'complete') cap = .62;
+        const csv = w.performance.getEntriesByType('resource').filter(e => /transactions\.csv|\.geojson/.test(e.name));
+        const fetches = v.key === 'buyer' || v.key === 'planner';            // these two download the course data; the others carry it inside
+        if (fetches ? csv.some(e => /transactions/.test(e.name)) : d.readyState === 'complete') cap = .9;
+      }
+      if (drawn(v) || performance.now() - t0 > 30000) { setP(v, 1); v.ready = true; watch(v); res(); return; }
+      setP(v, Math.max(v.p, v.p + (cap - v.p) * .12));
+      setTimeout(step, 100);
+    };
+    setTimeout(step, 100);
+  });
   v.frame.src = v.src;
   return v.loaded;
 }
