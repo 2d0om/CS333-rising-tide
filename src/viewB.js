@@ -1087,7 +1087,9 @@ export function createViewB(container, data, theme, { width, height, guessFirst 
     // one label, "under in 2025 · 2026", each year in the colour of the line that went under then
     gUnder.selectAll('text').remove();
     if (unders.length) {
-      const us = unders.slice().sort((a, b) => a.x - b.x), parts = ['under in ', ...us.flatMap((u, i) => i ? [' · ', u] : [u])];
+      // one entry per year: lines that went under in the same year share it, written in ink
+      const us = d3.groups(unders.slice().sort((a, b) => a.x - b.x), u => u.year)
+        .map(([year, g]) => ({ year, x: d3.max(g, u => u.x), L: g.length > 1 ? { text: theme.ink } : g[0].L })), parts = ['under in ', ...us.flatMap((u, i) => i ? [' · ', u] : [u])];
       const txt = parts.map(q => typeof q === 'string' ? q : q.year).join(''), w = textW(txt, 10.5, 700);
       const xr = Math.min(CW - cm.r - 2, Math.max(cm.l + w, us[us.length - 1].x + 30));
       // the first height (just under the waterline, then lower in the sea, then above it) where no line
