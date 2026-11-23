@@ -475,7 +475,8 @@ addEventListener('keydown', e => {
 addEventListener('popstate', () => { const k = VIEWS.findIndex(v => '#' + v.key === location.hash); go(k < 0 ? 0 : k, { push: false }); });
 // a new window size (full screen, a resized window) is applied in the same frame, before anything is painted
 let relayout = false;
-new ResizeObserver(() => { if (opening) relayout = true; else layout(); }).observe(stage);
+let placeLead = () => {};          // keeps the opening's caption just above the cards if the window changes size
+new ResizeObserver(() => { if (opening) { relayout = true; placeLead(); } else layout(); }).observe(stage);
 
 // ---------------------------------------------------------------------
 // the opening, every time the page opens: the four views are dealt onto the table as cards, each sketching
@@ -499,7 +500,8 @@ async function intro(first = 0) {
   pill.style.opacity = 0;
   if (!VIEWS[first].frame) load(VIEWS[first]);                        // the first view draws itself under its card
   const lead = $('lead');
-  lead.style.top = (stage.getBoundingClientRect().top + H() / 2 - stage.clientHeight / 2 * s0 - 58) + 'px';
+  placeLead = () => { lead.style.top = (stage.getBoundingClientRect().top + H() / 2 - stage.clientHeight / 2 * s0 - 58) + 'px'; };
+  placeLead();
   setTimeout(() => { if (opening) lead.style.opacity = 1; }, 900);
 
   // deal: each card drops in with a little tilt and a bounce
