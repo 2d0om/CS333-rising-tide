@@ -51,7 +51,7 @@
       <div id="detail"></div>
     </aside>
   </div>
-  <p class="note"><b>Data.</b> Dubai Land Department transactions, 10% random sample (course file): sales of units with sub-type Flat, 1 Jan 2015 – 31 Aug 2026 (older records are sparse and partly implausible; September 2026 is incomplete), dates read as UTC. Shares, not counts, because the file is a sample. Residents: Dubai Municipality communities file, population 2019, joined on the community number, so districts built since 2019 look emptier than they are, which is exactly where new residents are heading. Metro: the 56 stations in the course repo (Red and Green lines and the Expo branch, as of about 2020); distance is a straight line from the community's centre to the nearest station, so large communities may have a station nearer their edge. "The busiest" = the fewest communities that together make half of all flat sales in the period. Ready or off-plan: ready flats (registered as existing) can be lived in from the sale; off-plan flats were sold before completion, so people move in after handover; the file has no completion dates, and some buyers are investors who will rent the flat out. Flat size: from the bedrooms recorded on each sale (rooms_en); used as a sign of household type, not a record of who the buyers are (studio or 1-bed, 2-bed, 3-bed or more); "% = 2-bed+" is the share of flats with two or more bedrooms; sales with no bedroom count are left out of that bar.</p>
+  <p class="note"><b>Data.</b> Dubai Land Department transactions, 10% random sample (course file): sales of units with sub-type Flat, 1 Jan 2015 – 31 Aug 2026 (older records are sparse and partly implausible; September 2026 is incomplete), dates read as UTC. Shares, not counts, because the file is a sample. Residents: Dubai Data and Statistics Establishment, estimated population by community (usual residents, 2018–2025), joined on the community code. Each period uses the estimate nearest its middle: 2015–17 uses 2018 (the earliest available), 2018–20 uses 2019, 2021–23 uses 2022 and 2024–26 uses 2025. Its 2019 figures match the course file's Population 2019. Metro: the 56 stations in the course repo (Red and Green lines and the Expo branch, as of about 2020); distance is a straight line from the community's centre to the nearest station, so large communities may have a station nearer their edge. "The busiest" = the fewest communities that together make half of all flat sales in the period. Ready or off-plan: ready flats (registered as existing) can be lived in from the sale; off-plan flats were sold before completion, so people move in after handover; the file has no completion dates, and some buyers are investors who will rent the flat out. Flat size: from the bedrooms recorded on each sale (rooms_en); used as a sign of household type, not a record of who the buyers are (studio or 1-bed, 2-bed, 3-bed or more); "% = 2-bed+" is the share of flats with two or more bedrooms; sales with no bedroom count are left out of that bar.</p>
 </div>
 
 <script>
@@ -61,6 +61,7 @@
 const BASE = 'https://raw.githubusercontent.com/sharios/CS333/main/2026-27/';
 const START = Date.UTC(2015, 0, 1), END = Date.UTC(2026, 8, 1);            // 1 Jan 2015 – 31 Aug 2026
 const PERIODS = { '2015–17': [2015, 2017], '2018–20': [2018, 2020], '2021–23': [2021, 2023], '2024–26': [2024, 2026] };
+const POP_YEAR = { '2015–17': 2018, '2018–20': 2019, '2021–23': 2022, '2024–26': 2025 };   // population estimate used for each period
 const NICK = { 681: 'JVC', 346: 'Business Bay', 392: 'Dubai Marina', 345: 'Downtown', 631: 'Dubai Hills', 415: 'Creek Harbour',
                393: 'JLT', 621: 'International City', 521: 'Dubai South', 626: 'Silicon Oasis', 321: 'Maritime City' };
 const pct = v => (v * 100).toFixed(1) + '%', pct0 = v => Math.round(v * 100) + '%';
@@ -81,7 +82,7 @@ Promise.all([d3.csv(BASE + 'Part%202/transactions.csv'), d3.json(BASE + 'Part%20
   const comms = geo.features.map(f => {
     const p = f.properties, id = +p.COMM_NUM;
     const name = p.CNAME_E.toLowerCase().replace(/(^|[\s.])\w/g, c => c.toUpperCase()).replace(/\s*\(.*/, '').trim();
-    return { id, label: NICK[id] || name, pop: p['Population 2019'], lon: +p.Longitude, lat: +p.Latitude, feature: f,
+    return { id, label: NICK[id] || name, pops: POP_BY_YEAR[id] || [], lon: +p.Longitude, lat: +p.Latitude, feature: f,
              km: kmToMetro(+p.Longitude, +p.Latitude), deals: (byComm.get(id) || []).map(r => ({ y: r.year, off: r.reg_type_en === 'Off-Plan Properties',
                size: !r.rooms_en ? null : ['Studio', 'Single Room', '1 B/R'].includes(r.rooms_en) ? 0 : r.rooms_en === '2 B/R' ? 1 : 2 })) };
   });
@@ -90,7 +91,7 @@ Promise.all([d3.csv(BASE + 'Part%202/transactions.csv'), d3.json(BASE + 'Part%20
 
 function start(comms, stations) {
   const state = { period: '2024–26', split: 'sales', drill: null, pinned: null };
-  const POP = d3.sum(comms, c => c.pop), YEARS = d3.range(2015, 2026);
+  let POP = 0; const YEARS = d3.range(2015, 2026);                         // POP: Dubai's residents in the period's population year
   comms.forEach(c => { c.yearly = YEARS.map(y => c.deals.filter(r => r.y === y).length);
                        c.yearlyOff = YEARS.map(y => c.deals.filter(r => r.y === y && r.off).length); });
 
@@ -111,8 +112,9 @@ function start(comms, stations) {
   const familyShare = n => d3.sum(n) ? (n[1] + n[2]) / d3.sum(n) : null;   // share of flats with 2+ bedrooms
   function measure() {
     const inP = p => r => r.y >= PERIODS[p][0] && r.y <= PERIODS[p][1];
-    comms.forEach(c => { const d = c.deals.filter(inP(state.period)); c.sold = d.length; c.off = d.filter(r => r.off).length;
+    comms.forEach(c => { c.pop = c.pops[POP_YEAR[state.period] - 2018] || 0; const d = c.deals.filter(inP(state.period)); c.sold = d.length; c.off = d.filter(r => r.off).length;
       c.sizes = [0, 1, 2].map(k => d.filter(r => r.size === k).length); c.family = familyShare(c.sizes); });
+    POP = d3.sum(comms, c => c.pop);
     const total = d3.sum(comms, c => c.sold), top = new Set(); let cum = 0;
     for (const c of d3.sort(comms.filter(c => c.sold), c => -c.sold)) { if (cum >= total / 2) break; top.add(c.id); cum += c.sold; }
     const m = { total, top, busiest: top.size };
@@ -126,7 +128,7 @@ function start(comms, stations) {
   // 3. THE RIBBONS: residents (left) flow into flat sales (right)
   // =====================================================================
   const svg = d3.select('#flow'), X0 = 165, X1 = 560, BW = 12, TOP = 64, SPAN = 525, GAP = 18;
-  const flowComms = comms.filter(c => c.pop > 0 || c.deals.length);
+  const flowComms = comms.filter(c => d3.max(c.pops) > 0 || c.deals.length);
   const ribbonPath = (c, grow = 1) => { const xa = X0 + BW, xb = xa + (X1 - xa) * grow, xm = (xa + xb) / 2;   // a smooth S-shaped band
     return `M${xa},${c.a0}C${xm},${c.a0} ${xm},${c.b0} ${xb},${c.b0}L${xb},${c.b1}C${xm},${c.b1} ${xm},${c.a1} ${xa},${c.a1}Z`; };
   const gFlow = svg.append('g'), gDrill = svg.append('g');                 // the ribbon view, and the "when do they arrive" view
@@ -148,7 +150,7 @@ function start(comms, stations) {
     ribbons.transition(t).delay(first ? c => c.a0 / 3 : 0).attr('d', c => ribbonPath(c)).attr('fill', c => col(c.group));
     left.transition(t).attr('y', c => c.a0).attr('height', c => c.a1 - c.a0).attr('fill', c => d3.color(col(c.group)).darker(.6));
     right.transition(t).delay(first ? 900 : 0).attr('y', c => c.b0).attr('height', c => c.b1 - c.b0).attr('fill', c => d3.color(col(c.group)).darker(.6));
-    hLeft.text('WHERE PEOPLE LIVE · 2019'); hRight.text(`WHERE FLATS SOLD · ${state.period}`);
+    hLeft.text(`WHERE PEOPLE LIVE · ${POP_YEAR[state.period]}`); hRight.text(`WHERE FLATS SOLD · ${state.period}`);
     // the three groups, explained in place on the right; nudged apart so they never overlap
     const notes = [0, 1, 2].map(k => { const cs = flowComms.filter(c => c.group === k);
       return { k, y: cs.length ? (m.g[k].sales ? (d3.min(cs, c => c.b0) + d3.max(cs, c => c.b1)) / 2 : d3.max(cs, c => c.b1) + 10) : 600 }; });
@@ -214,11 +216,11 @@ function start(comms, stations) {
   function drawDetail(c) {
     const box = d3.select('#detail'), S = SPLITS[state.split];
     if (!c) { box.html(`<h2>Pick a community</h2><p>Hover or click any ribbon, row or place on the map.</p>`); return; }
-    const ratio = c.ps ? c.ss / c.ps : null;
+    const ratio = c.ps ? c.ss / c.ps : null, py = POP_YEAR[state.period];
     box.style('--c', S.colours[c.group]).html(`<h2>${c.label}</h2>
-      <div>${d3.format(',')(c.pop)} residents in 2019 · <b>${pct(c.ps)}</b> of Dubai's</div>
+      <div>${d3.format(',')(c.pop)} residents in ${py} · <b>${pct(c.ps)}</b> of Dubai's</div>
       <div><b>${pct(c.ss)}</b> of Dubai's flat sales in ${state.period}${c.sold ? ` · ${pct0(c.off / c.sold)} off-plan` : ''}</div>
-      <p class="big">${!c.sold ? 'No flat sold here in this period.' : ratio == null || c.pop < 300 ? 'Almost nobody lived here in 2019: a new district.' : `Its share of flat sales is ${ratio.toFixed(ratio < 1 ? 2 : 1)}× its share of residents.`}</p>
+      <p class="big">${!c.sold ? 'No flat sold here in this period.' : ratio == null || c.pop < 300 ? `Almost nobody lived here in ${py}: a new district.` : `Its share of flat sales is ${ratio.toFixed(ratio < 1 ? 2 : 1)}× its share of residents.`}</p>
       ${c.sold ? `<div><b>Ready or off-plan:</b> ${pct0(c.off / c.sold)} off-plan, so ${c.off / c.sold >= .5 ? 'most new residents arrive after handover' : 'most new residents are moving in now'}</div>` : ''}
       ${c.sold && c.family != null ? `<div><b>Flat size:</b> ${pct0(1 - c.family)} studios or 1-beds, ${pct0(c.family)} 2-bed+ · ${c.family >= lastM.family + .05 ? 'suits more families than average' : c.family <= lastM.family - .1 ? 'suits mostly singles and couples' : 'a typical mix'}</div>` : ''}
       <div>${c.km.toFixed(1)} km from the nearest metro station</div><svg id="spark" viewBox="0 0 300 58"></svg>`);
@@ -316,6 +318,45 @@ function start(comms, stations) {
   d3.selectAll('#split button').classed('on', d => d === state.split); d3.selectAll('#periods button').classed('on', d => d === state.period);
   draw();
 }
+</script>
+<script>
+// Estimated population (usual residents) by community, 2018–2025: Dubai Data and Statistics Establishment.
+// community code: [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+const POP_BY_YEAR = {
+  101:[2,2,2,2,2,2,2,2], 111:[1655,1735,1961,2593,4742,5414,7824,8496], 112:[7314,7460,7537,8067,8358,8945,9129,9317], 113:[15453,15899,15985,16723,17362,18213,18455,18918], 114:[2766,2841,2869,3016,3165,3320,3391,3504], 115:[3861,3969,4020,4205,4382,4651,4767,4928], 116:[18925,19280,19414,19820,20706,21781,21870,22507],
+  117:[38294,38970,39227,40105,41528,43635,43762,44836], 118:[48804,50090,50438,53075,54814,57354,57344,57980], 119:[10279,10480,10623,11097,11538,12051,12432,12801], 121:[14,14,14,15,15,2,2,2], 122:[24373,24747,24961,25839,26699,28024,28278,29187], 123:[43473,46185,46510,48739,50433,52773,52892,53733], 124:[68717,69771,70112,73087,75087,77572,78016,78855],
+  125:[6984,7120,7216,7538,7838,8224,8353,8812], 126:[16905,17240,17481,18043,18431,19115,19506,20372], 127:[81741,83187,83529,84661,87299,91997,92239,94825], 128:[1952,1992,2016,2011,2086,2239,2344,2496], 129:[13266,13551,13708,14241,14731,15564,15878,16239], 131:[468,481,485,510,522,565,588,618], 132:[20392,20785,21018,21608,22050,22914,23292,23834],
+  133:[20847,21218,21430,22026,22498,23668,24020,24882], 134:[14178,14938,15286,16534,19165,21663,23173,25029], 213:[2964,3124,3200,3305,3395,3524,3648,3831], 214:[18424,18535,18746,19726,20488,21729,22216,23710], 215:[3545,2935,2958,3069,3204,3545,3588,3771], 216:[34594,37167,37493,38425,38981,40596,40744,41316], 221:[22,22,22,121,121,123,125,29],
+  226:[10957,11509,11687,12114,12522,13140,13747,14389], 227:[4577,4835,4909,5068,5208,5402,5605,5812], 228:[10217,10655,10837,11185,11487,11911,12198,12527], 231:[29011,31449,31828,32757,36128,37726,41342,44866], 232:[41818,45657,46210,48378,50341,52759,53248,54802], 233:[11442,12473,12654,12851,13372,14097,14448,15628], 234:[6812,7162,7263,7513,7739,8071,8299,8589],
+  241:[56489,61936,62706,64458,67078,70599,71100,73179], 242:[8362,9369,9511,10813,11250,11956,12565,13642], 243:[8063,8834,8967,9410,9781,10384,10901,11826], 244:[6129,6493,6649,6865,7057,7326,7614,8023], 245:[32346,34947,35083,35861,38915,39630,43444,46798], 246:[2559,2710,3524,2802,2887,3036,3187,3461], 247:[2476,2709,2751,2865,2979,3163,3320,3580],
+  248:[1286,1613,2034,2722,9170,14188,21720,23578], 251:[60288,64355,65044,66736,69143,72124,74135,79776], 252:[63,67,67,70,83,88,91,409], 261:[7375,8091,8283,8616,8856,9201,9547,9996], 262:[15806,16552,16968,17498,17956,18588,19144,19836], 263:[10781,11317,11600,11967,12263,12723,13065,13617], 264:[197838,196316,194618,148832,158736,160811,160831,171980],
+  265:[12510,14672,15052,15514,15907,16417,16888,17399], 266:[5047,5506,5647,5820,5968,6159,6377,6659], 267:[2,2,2,2,2,2,2,2], 268:[6344,6679,6847,7061,7246,7500,7773,8132], 271:[3193,3368,3451,3565,3663,3803,3940,4141], 281:[12241,12893,13206,13634,14008,14581,14973,15759], 282:[3865,4523,5322,5507,6074,6482,6723,7095],
+  283:[1706,1757,1770,1843,1869,2013,2346,2508], 284:[805,810,810,10659,10687,10975,11016,11791], 302:[39,39,39,41,51,53,56,260], 303:[7,7,7,7,7,8,7,8], 304:[3,3,3,3,3,3,3,3], 311:[2,2,7,7,7,8,7,8], 312:[46929,51012,51293,52439,54320,57129,57330,58772],
+  313:[33421,36738,37012,38215,39429,41345,41740,42233], 314:[5351,5856,5950,6482,6708,7110,7479,8119], 315:[4867,5328,5414,5633,5828,6175,6494,7046], 316:[42904,47140,47652,48546,50449,53661,54052,55905], 317:[37400,40091,40520,41244,42704,44961,46395,50253], 318:[70558,75066,75560,76591,78581,81725,82625,85994], 319:[13616,14901,15061,15568,16113,17038,17294,18658],
+  321:[14129,15172,14753,8391,8793,9064,11089,12917], 322:[13034,14191,14372,14504,15013,15880,16143,17447], 323:[21957,23963,24281,25033,25788,27313,27642,29768], 324:[2,2,2,602,3378,3499,3868,4201], 325:[3062,3260,3331,3449,3548,3708,3853,4083], 326:[4197,5104,5873,6947,9926,13750,18744,27311], 332:[18843,20356,20715,21496,22208,23452,24495,26083],
+  333:[54338,56734,57487,58437,59960,63480,63592,64959], 334:[41048,38991,39297,40997,41946,44972,45326,48971], 335:[15355,16519,16734,17676,18268,19318,19913,21614], 336:[12155,12218,12419,13515,13982,14810,15176,16480], 337:[7509,8102,8258,8568,8940,9402,9830,10540], 342:[9380,10079,10284,10660,10981,11518,12024,12828], 343:[11156,11555,11725,12185,12385,13071,13661,14643],
+  345:[18698,20477,20795,21862,24969,26648,29922,34467], 346:[19715,21179,21497,23943,27130,27883,32354,41055], 347:[819,1317,1457,1817,5965,12422,19280,33933], 352:[12493,13417,13690,14188,14613,15321,15992,16880], 353:[7893,8514,8722,9043,9319,9784,10237,10778], 354:[18845,20154,20573,21322,21959,23014,23500,24767], 355:[4551,5240,5354,5543,5701,5958,6196,6574],
+  356:[10867,11718,11947,12468,12849,13493,13902,14805], 357:[6247,6679,6823,7062,7263,7591,7913,8423], 358:[40541,40553,40556,50190,53585,55846,61353,65628], 359:[21788,22718,23403,21691,22684,23828,24865,26798], 362:[11456,12325,12572,13236,13630,14288,14919,15743], 363:[7709,8271,8443,8745,9001,9426,9838,10400], 364:[26569,26075,25860,28060,30860,35317,40479,43332],
+  365:[158543,159978,160517,128867,134735,137575,144327,149271], 366:[7021,7520,7672,7777,8004,8381,8751,9345], 367:[4097,4367,4464,4618,4747,4953,5158,5475], 368:[25360,26656,25504,17306,18789,21207,27332,29268], 369:[38280,38079,37360,38761,41325,43806,48926,52341], 372:[4112,4435,4516,4686,4833,5085,5313,5625], 373:[35469,39451,40202,41532,47069,49033,53407,55971],
+  375:[13990,14601,14947,15401,15796,16311,16912,17747], 376:[14815,15523,15901,16417,16836,17410,18038,18798], 381:[22333,24448,24741,25050,25920,27365,27745,30100], 382:[5592,6126,6226,6478,6702,7098,7471,8112], 383:[22638,24834,25202,25778,30253,33183,37911,41164], 384:[115,115,115,0,0,0,0,0], 388:[17737,21442,21769,22394,26223,26632,31072,33740],
+  392:[55052,61047,61992,62570,67824,70662,78843,81610], 393:[37067,40586,41185,40957,45919,47930,53456,56032], 394:[23488,27728,28164,28424,31454,32188,36908,39068], 412:[4641,4982,5060,5270,7446,7684,10003,10856], 413:[2,2,2,2,2,2,2,2], 415:[2,587,947,2086,5103,10550,16956,21412], 416:[13589,14216,14571,16930,20673,23996,28189,29800],
+  421:[21696,24679,24865,26405,27240,28583,30017,32461], 422:[10237,10689,10981,11323,11562,11926,12358,12875], 423:[14208,14728,15147,15613,15941,16318,16898,17406], 424:[12910,13452,13881,14308,14612,15076,15592,16110], 425:[60,60,0,0,0,0,0,0], 431:[55,55,3,3,90,329,341,556], 501:[5,5,5,5,5,5,5,5],
+  502:[4,4,4,4,4,4,4,4], 511:[3300,3492,3518,3341,3439,3877,4032,4371], 512:[45,45,10398,10381,11364,12667,16632,17804], 513:[9,9,15,16,91,3305,5316,5687], 516:[2462,2462,2462,0,0,0,0,0], 518:[23000,23000,23000,28000,29063,33070,36101,40902], 521:[2183,2697,3404,4150,10032,16552,22927,31320],
+  531:[13665,14491,14511,12629,14606,15889,20060,21547], 532:[11144,11144,8200,4684,5150,5407,5900,6315], 533:[11170,11170,11170,10766,12782,14786,16790,17946], 591:[69115,75287,76016,77363,79541,85780,96005,104262], 592:[1561,1570,1573,1008,1019,1031,1921,2059], 593:[1513,1513,1513,218,218,218,1510,1614], 594:[28600,24487,24795,9467,10200,12700,14300,15319],
+  597:[59763,60630,54474,80118,83765,85280,88789,95188], 598:[69000,69956,69117,63094,66984,70605,75316,80947], 599:[129024,128975,147777,198228,202142,203281,205079,219269], 611:[15,16,2,112,116,126,221,240], 612:[2393,2550,2564,2160,2230,2388,2552,2765], 613:[2352,2514,2529,1833,1907,2071,2246,2440], 614:[21500,21834,22358,22247,25422,24551,28657,31090],
+  615:[2258,2389,2486,2569,2627,2731,2833,2985], 616:[137,767,1098,1137,1271,1333,1392,1486], 617:[3505,3685,3779,3898,3991,4111,4256,4460], 618:[5485,5948,6056,6589,6960,7347,8754,9442], 621:[97159,106072,106601,108176,111020,117557,120353,130705], 622:[1524,1568,1380,1409,1426,1464,1504,1620], 624:[8359,8994,8763,10104,13928,15498,20882,22678],
+  626:[35361,38494,39131,40819,53904,56904,60804,66015], 631:[68,1563,1688,3356,6800,14836,22071,27971], 643:[9623,10519,10678,10890,13216,12905,14560,15797], 645:[9599,9764,9906,10270,12651,14310,15920,17096], 646:[2,2,160,167,172,184,193,210], 648:[19550,21241,21536,20479,23570,26968,30756,38387], 664:[16179,18213,18511,18856,21570,22789,25406,21581],
+  665:[7740,8473,8613,8957,11520,14204,16743,18178], 671:[13267,13717,14069,14500,14813,15222,15771,16316], 672:[7057,7509,7661,7239,7402,7772,8371,10839], 673:[4566,6929,7023,8573,10838,15062,19451,28894], 674:[9672,10598,10767,11155,13475,16500,17628,17144], 675:[1032,1523,1546,1781,1823,4025,4188,7544], 676:[6250,6845,6955,7238,7527,9517,11008,15949],
+  677:[1759,2322,2359,2455,2519,4745,4860,7272], 681:[25297,25974,26331,29087,31906,40995,44363,55163], 682:[18789,20611,20916,21609,25245,30005,35073,39088], 683:[8919,9748,9897,10302,12604,13466,18179,18736], 684:[6753,7384,7506,7809,10141,11854,16398,17793], 685:[17413,18002,18233,18484,19005,22440,26334,28584], 686:[11,12,12,13,13,15,16,17],
+  711:[3587,4107,4312,4488,5057,6160,7256,8320], 721:[4870,5236,5710,5874,6126,6434,6667,6916], 724:[26,26,2,2,2,2,2,2], 727:[46,46,46,48,48,51,53,58], 731:[2921,3197,3243,3389,3494,3650,3802,4091], 735:[727,754,760,769,796,823,855,929], 736:[504,544,555,575,602,628,653,695],
+  811:[13316,13579,14943,12613,12740,14667,18602,20004], 812:[2923,3127,3152,3263,3349,4633,5672,6163], 813:[25,25,0,0,0,0,0,0], 814:[4036,4429,4494,4897,5026,5225,5486,5959], 821:[1119,1119,1120,424,430,451,460,496], 824:[258,283,287,299,306,328,344,373], 826:[53,53,53,56,58,60,62,67],
+  831:[1363,1511,1530,1601,1653,1765,1840,1988], 835:[309,309,310,169,175,185,193,210], 841:[930,1005,1023,1217,1247,1326,1373,1467], 845:[175,193,195,205,211,225,235,255], 847:[187,204,206,216,224,238,248,269], 851:[232,232,232,195,200,214,249,269], 857:[570,628,635,666,687,718,751,816],
+  861:[94,94,95,100,104,118,124,135], 891:[13295,14045,14400,14985,15451,16123,13023,13709], 911:[8,8,8,8,8,9,8,9], 912:[2,2,2,2,2,2,2,2], 913:[2329,1347,1347,3623,4043,4402,5012,6446], 914:[4,4,4,4,4,6554,9892,12825], 915:[403,403,403,403,413,738,773,3238],
+  916:[2,58,858,1593,2040,null,null,null], 917:[79,94,96,141,143,144,158,166], 918:[4,4,711,1539,1783,null,null,null], 919:[3,3,3,3,3,3,3,3], 921:[0,1114,1130,1679,2534,5612,5771,8293], 922:[217,1364,1380,3685,5366,7975,11184,14129], 923:[4,4,4,4,4,4,4,4],
+  924:[8,8,8,8,8,9,8,9], 925:[100,100,100,88,87,89,111,120], 931:[2633,2856,2906,2950,3045,3161,3275,3455], 941:[55,55,55,58,60,62,65,71], 945:[395,417,425,442,453,475,494,527], 951:[589,607,608,615,619,628,628,674], 956:[35,35,35,37,38,43,44,48],
+  961:[660,665,666,684,689,695,701,827], 967:[7,7,32,33,30,32,34,37], 971:[16,16,3,3,3,3,3,3], 975:[0,0,3,3,3,3,3,3], 978:[3,3,3,3,0,0,0,0], 981:[804,804,805,347,350,355,352,378], 987:[10,10,0,0,300,300,300,321],
+  988:[0,0,0,0,0,0,0,0], 991:[0,0,0,0,12,13,14,15]
+};
 </script>
 </body>
 </html>
